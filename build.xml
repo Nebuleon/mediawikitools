@@ -1,0 +1,40 @@
+<project name="MediaWiki tools" default="compile" basedir=".">
+	<description>Ant build file to compile Java files used by the MediaWiki tools project</description>
+
+	<!-- Compile src/*.java -->
+	<property name="sourcedir" location="${basedir}/src" />
+	<!-- into bin/*.class -->
+	<property name="classdir" location="${basedir}/bin" />
+	<!-- Use cache/ as a dependency caching directory. -->
+	<property name="cachedir" location="${basedir}/cache" />
+	<!-- No dependencies -->
+
+	<target name="initialise" description="Create needed directories">
+		<!-- Make bin/ and cache/, if they don't exist -->
+		<mkdir dir="${classdir}" />
+		<mkdir dir="${cachedir}" />
+	</target>
+
+	<target name="compile" description="Compile changed .java files" depends="initialise">
+		<parallel>
+			<sequential>
+				<!-- 1. Delete obsolete class files. -->
+				<depend srcdir="${sourcedir}" destdir="${classdir}" cache="${cachedir}" closure="true" warnOnRmiStubs="false" />
+				<!-- 2. Compile using javac. -->
+				<javac srcdir="${sourcedir}" destdir="${classdir}" encoding="utf-8" debug="true" debuglevel="lines,vars,source" deprecation="on" listfiles="true" target="1.5" source="1.5" fork="no" />
+			</sequential>
+			<!-- 3. Copy non-.java files from src/ to bin/. -->
+			<copy todir="${classdir}" includeEmptyDirs="false" verbose="true">
+				<fileset dir="${sourcedir}">
+					<include name="**/*" />
+					<exclude name="**/*.java" />
+				</fileset>
+			</copy>
+		</parallel>
+	</target>
+
+	<target name="clean" description="Delete .class files">
+		<delete dir="${classdir}" />
+		<delete dir="${cachedir}" />
+	</target>
+</project>
