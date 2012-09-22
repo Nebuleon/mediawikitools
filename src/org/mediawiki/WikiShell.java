@@ -36,6 +36,7 @@ import org.mediawiki.MediaWiki.MediaWikiException;
 // TODO Add a premade command maker that can automate action reasons etc.
 // TODO Preserve the old MediaWiki when quitting to avoid logging in constantly
 // TODO Allow the wiki hostname/IP and script path to be passed in to main()
+// TODO Special page aliases command
 /**
  * A wiki shell that allows a user to perform actions on the wiki using the
  * command-line.

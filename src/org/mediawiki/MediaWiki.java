@@ -62,6 +62,13 @@ import org.xml.sax.SAXException;
  */
 public class MediaWiki implements Serializable, ObjectInputValidation {
 	// TODO Add categorymembers by page title
+	// TODO Add undo by revision ID
+	// TODO Add purge
+	// TODO Add parse-wikitext and parse-pagetext
+	// TODO Add block/unblock
+	// TODO Add undelete
+	// TODO Add watch-add/watch-del/watch-list/watch-newedits
+	// TODO Add patrol
 
 	private static final long serialVersionUID = 1L;
 
@@ -117,7 +124,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	private final transient ReadWriteLock preferenceLock = new ReentrantReadWriteLock();
 
 	/**
-	 * Lock used to ensure that only one thread can access the network to to
+	 * Lock used to ensure that only one thread can access the network to
 	 * connect to the wiki represented by this <tt>MediaWiki</tt>. To prevent
 	 * deadlock in this class, if an operation needs to lock both
 	 * <code>preferenceLock</code> and <code>networkLock</code>,
