@@ -1,13 +1,19 @@
 package org.mediawiki;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.Console;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.URLEncoder;
 import java.text.ParseException;
@@ -32,10 +38,7 @@ import java.util.regex.PatternSyntaxException;
 import org.mediawiki.MediaWiki.MediaWikiException;
 
 // TODO Add a 'lines' command that outputs 23 lines at a time
-// TODO Add an 'undo' command that takes a revision number
 // TODO Add a premade command maker that can automate action reasons etc.
-// TODO Preserve the old MediaWiki when quitting to avoid logging in constantly
-// TODO Allow the wiki hostname/IP and script path to be passed in to main()
 // TODO Special page aliases command
 /**
  * A wiki shell that allows a user to perform actions on the wiki using the
@@ -92,53 +95,91 @@ public class WikiShell {
 	 * @param args
 	 *            unused
 	 */
-	public static void main(final String[] args) {
+	public static void main(String[] args) {
 		System.err.println("You may use 'cancel' at any time to cancel a command or exit a repeating mode.");
 		System.err.println("For a list of commands, use 'commands' at a $ or # prompt. For help, see 'help'.");
-		System.err.println("Enter your initial wiki information.");
 
 		final Connect connect = new Connect();
 
 		MediaWiki wiki = null;
 
+		// Load the initial MediaWiki from disk to be restored when the
+		// application next starts.
+		work("Loading wiki information from disk...");
 		try {
-			wikiDetails: while (true) /*- wiki detail input retry loop */{
-				final CommandContext context = new CommandContext();
+			try {
+				ObjectInputStream loader = new ObjectInputStream(new BufferedInputStream(new FileInputStream(new File(System.getProperty("user.home"), ".wikishell-wiki"))));
+				try {
+					wiki = (MediaWiki) loader.readObject();
+				} finally {
+					loader.close();
+				}
+			} finally {
+				workEnd();
+			}
+		} catch (FileNotFoundException e) {
+			// okay, ask for the wiki info
+		} catch (ClassNotFoundException e) {
+			System.err.println("Warning: Wiki information cannot be loaded");
+			System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+		} catch (IOException e) {
+			System.err.println("Warning: Wiki information cannot be loaded");
+			System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+		}
 
-				connect.getEssentialInput(context);
-				connect.getAuxiliaryInput(context);
+		if (wiki == null) {
+			System.err.println("Enter your initial wiki information.");
 
-				reconnect: while (true) /*- wiki connection retry loop */{
-					try {
-						connect.perform(context);
-						wiki = context.wiki;
+			try {
+				wikiDetails: while (true) /*- wiki detail input retry loop */{
+					final CommandContext context = new CommandContext();
 
-						break wikiDetails; // on success
-					} catch (final IOException e) {
-						System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
-						if (!inputBoolean("Retry? [Y/n] ", true)) {
-							break reconnect;
-						}
-					} catch (final MediaWiki.MediaWikiException e) {
-						System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
-						if (!inputBoolean("Retry? [Y/n] ", true)) {
-							break reconnect;
+					// Use the command-line details only for the first wiki
+					// connection attempt. If it fails due to IOException or
+					// MediaWikiException, that can be retried, but if the user
+					// says no to retrying, come back here to ask for wiki
+					// details.
+					if (args.length >= 2) {
+						context.essentialInput = args[0];
+						context.auxiliaryInput = args[1];
+						args = new String[0];
+					} else {
+						connect.getEssentialInput(context);
+						connect.getAuxiliaryInput(context);
+					}
+
+					reconnect: while (true) /*- wiki connection retry loop */{
+						try {
+							connect.perform(context);
+							wiki = context.wiki;
+
+							break wikiDetails; // on success
+						} catch (final IOException e) {
+							System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+							if (!inputBoolean("Retry? [Y/n] ", true)) {
+								break reconnect;
+							}
+						} catch (final MediaWiki.MediaWikiException e) {
+							System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+							if (!inputBoolean("Retry? [Y/n] ", true)) {
+								break reconnect;
+							}
 						}
 					}
 				}
+			} catch (final CancellationException e) {
+				// Cancelled the initial connection process.
+				System.exit(1);
+				return;
+			} catch (final NullPointerException e) {
+				// End of file received during the initial connection process.
+				System.err.println();
+				return;
+			} catch (final IOException e) {
+				e.printStackTrace();
+				System.exit(1);
+				return;
 			}
-		} catch (final CancellationException e) {
-			// Cancelled the initial connection process.
-			System.exit(1);
-			return;
-		} catch (final NullPointerException e) {
-			// End of file received during the initial connection process.
-			System.err.println();
-			return;
-		} catch (final IOException e) {
-			e.printStackTrace();
-			System.exit(1);
-			return;
 		}
 
 		path.addLast("~");
@@ -321,6 +362,7 @@ public class WikiShell {
 				commands.put("upload", u);
 			}
 			commands.put("rollback", new Rollback());
+			commands.put("undo", new Undo());
 			commands.put("delete", new Delete());
 			commands.put("protect", new Protect());
 			{
@@ -408,7 +450,25 @@ public class WikiShell {
 			System.err.println();
 		} catch (final IOException e) {
 			e.printStackTrace();
-			System.exit(1);
+		} finally {
+			// Save the current MediaWiki to disk to be restored when the
+			// application next starts.
+			work("Saving wiki information to disk...");
+			try {
+				try {
+					ObjectOutputStream saver = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(new File(System.getProperty("user.home"), ".wikishell-wiki"))));
+					try {
+						saver.writeObject(wiki);
+					} finally {
+						saver.close();
+					}
+				} finally {
+					workEnd();
+				}
+			} catch (IOException e) {
+				System.err.println("Warning: Wiki information cannot be saved");
+				System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+			}
 		}
 	}
 
@@ -2943,6 +3003,53 @@ public class WikiShell {
 			System.err.println();
 			System.err.println("The page name is mandatory and will be requested if not provided.");
 			System.err.println("You will be asked to provide a rollback reason (autogenerated if not provided) and to state whether you want the rollbed-back edits to be hidden from the default Special:Recentchanges (?hidebots=1).");
+		}
+	}
+
+	public static class Undo extends AbstractEditTokenCommand {
+		@Override
+		public void getEssentialInput(CommandContext context) throws IOException, NullPointerException, CancellationException {
+			final String revisionIDString = inputMandatory("revision number to undo: ");
+			try {
+				context.essentialInput = Long.valueOf(revisionIDString);
+			} catch (NumberFormatException nfe) {
+				System.err.println("Invalid input");
+				throw new CancellationException();
+			}
+		}
+
+		@Override
+		public void getAuxiliaryInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.auxiliaryInput != null)
+				return;
+			final String undoComment = input("undo comment (<none>): ", null);
+			final Boolean minor = inputBoolean("minor edit [y/n] (<per Special:Preferences>: ", null);
+
+			context.auxiliaryInput = new Object[] { undoComment, minor };
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
+			final long revisionID = (Long) context.essentialInput;
+			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+			final String undoComment = (String) auxiliaryInput[0];
+			final Boolean minor = (Boolean) auxiliaryInput[1];
+			final MediaWiki.EditToken token = (MediaWiki.EditToken) context.token;
+
+			work("Performing undo...");
+			try {
+				context.wiki.undoRevision(token, revisionID, undoComment, true /*- bot */, minor);
+			} finally {
+				workEnd();
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Undoes a revision of a page on the current wiki.");
+			System.err.println();
+			System.err.println("undo [<page name>]");
+			System.err.println();
+			System.err.println("The page name is mandatory and will be requested if not provided.");
+			System.err.println("You will be asked to provide a revision number to undo, an undo comment (autogenerated if not provided) and whether your edit to undo the revision is minor.");
 		}
 	}
 

@@ -62,13 +62,13 @@ import org.xml.sax.SAXException;
  */
 public class MediaWiki implements Serializable, ObjectInputValidation {
 	// TODO Add categorymembers by page title
-	// TODO Add undo by revision ID
 	// TODO Add purge
 	// TODO Add parse-wikitext and parse-pagetext
 	// TODO Add block/unblock
 	// TODO Add undelete
 	// TODO Add watch-add/watch-del/watch-list/watch-newedits
 	// TODO Add patrol
+	// TODO Add Special:Recentchanges
 
 	private static final long serialVersionUID = 1L;
 
@@ -91,7 +91,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	/**
 	 * Parses information returned by the MediaWiki API in XML format.
 	 */
-	private final transient DocumentBuilder documentBuilder;
+	private transient DocumentBuilder documentBuilder;
 
 	/**
 	 * Contains cookies set by the wiki. An implementation of <tt>Map</tt>
@@ -121,7 +121,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * <code>networkLock</code>, <code>preferenceLock</code> must be acquired
 	 * last.
 	 */
-	private final transient ReadWriteLock preferenceLock = new ReentrantReadWriteLock();
+	private transient ReadWriteLock preferenceLock;
 
 	/**
 	 * Lock used to ensure that only one thread can access the network to
@@ -130,11 +130,11 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * <code>preferenceLock</code> and <code>networkLock</code>,
 	 * <code>networkLock</code> must be acquired first.
 	 */
-	private final transient Lock networkLock = new ReentrantLock();
+	private transient Lock networkLock;
 
 	// - - - CONSTRUCTORS, INITIALIZATION AND SERIALIZATION CODE - - -
 
-	{
+	protected void init() {
 		final DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
 		documentBuilderFactory.setCoalescing(true);
 		documentBuilderFactory.setIgnoringComments(true);
@@ -143,6 +143,8 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		} catch (final ParserConfigurationException e) {
 			throw new ExceptionInInitializerError(e);
 		}
+		preferenceLock = new ReentrantReadWriteLock();
+		networkLock = new ReentrantLock();
 	}
 
 	/**
@@ -195,11 +197,15 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			endIndex--;
 		}
 		this.scriptPath = new String(scriptPath.substring(beginIndex, endIndex));
+
+		init();
 	}
 
 	private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
 		in.registerValidation(this, 0);
 		in.defaultReadObject();
+
+		init();
 	}
 
 	/**
@@ -213,7 +219,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			throw new InvalidObjectException("scriptPath == null");
 		if (host.length() == 0)
 			throw new InvalidObjectException("host is empty");
-		if ((scriptPath.charAt(0) == '/') || (scriptPath.charAt(scriptPath.length() - 1) == '/'))
+		if (scriptPath.length() > 0 && ((scriptPath.charAt(0) == '/') || (scriptPath.charAt(scriptPath.length() - 1) == '/')))
 			throw new InvalidObjectException("scriptPath starts or ends with /");
 	}
 
@@ -3842,6 +3848,75 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			postParams.put(minor ? "minor" : "notminor", "true");
 		if (requireExist != null)
 			postParams.put(requireExist ? "nocreate" : "createonly", "true");
+		if (editToken.getLastRevisionTime() != null)
+			postParams.put("basetimestamp", iso8601TimestampParser.format(editToken.getLastRevisionTime()));
+
+		String url = createApiGetUrl(getParams);
+
+		networkLock.lock();
+		try {
+			InputStream in = post(url, postParams);
+			Document xml = parse(in);
+			checkError(xml);
+
+			NodeList editTags = xml.getElementsByTagName("edit");
+
+			if (editTags.getLength() > 0) {
+				Element editTag = (Element) editTags.item(0);
+
+				if (editTag.hasAttribute("result")) {
+					if (editTag.getAttribute("result").equals("Success"))
+						return this;
+					else
+						throw new MediaWiki.ActionFailureException(editTag.getAttribute("result"));
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <edit result=\"\"> attribute not present");
+			} else
+				throw new MediaWiki.ResponseFormatException("expected <edit> tag not present");
+		} finally {
+			networkLock.unlock();
+		}
+	}
+
+	// - - - UNDO - - -
+
+	/**
+	 * Undoes a revision on the page embodied by the specified
+	 * <code>editToken</code>.
+	 * 
+	 * @param editToken
+	 *            The <tt>EditToken</tt> describing the page to undo a revision
+	 *            of and containing information to detect conflicts. This is
+	 *            gotten using <code>startEdit</code>.
+	 * @param revisionID
+	 *            The ID of the revision to undo.
+	 * @param editSummary
+	 *            The summary to be used to describe the edit that undoes the
+	 *            revision.
+	 * @param bot
+	 *            Whether to mark the edit that undoes the revision as made by a
+	 *            bot ( <code>true</code>) or not (<code>false</code>).
+	 * @param minor
+	 *            Whether to mark the edit that undoes the revision as minor (
+	 *            <code>true</code>) or not ( <code>false</code>) or to use the
+	 *            value in <tt>Special:Preferences</tt> for the currently-logged
+	 *            in user of this <tt>MediaWiki</tt>.
+	 * @return this <tt>MediaWiki</tt>
+	 * @throws IOException
+	 * @throws MediaWiki.MediaWikiException
+	 */
+	public MediaWiki undoRevision(final MediaWiki.EditToken editToken, long revisionID, String editSummary, boolean bot, Boolean minor) throws IOException, MediaWiki.MediaWikiException {
+		Map<String, String> getParams = paramValuesToMap("action", "edit", "format", "xml");
+		Integer maxLag = getMaxLag();
+		if (maxLag != null)
+			getParams.put("maxlag", maxLag.toString());
+		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()), "undo", Long.toString(revisionID));
+		if (editSummary != null)
+			postParams.put("summary", editSummary);
+		if (bot)
+			postParams.put("bot", "true");
+		if (minor != null)
+			postParams.put(minor ? "minor" : "notminor", "true");
 		if (editToken.getLastRevisionTime() != null)
 			postParams.put("basetimestamp", iso8601TimestampParser.format(editToken.getLastRevisionTime()));
 
