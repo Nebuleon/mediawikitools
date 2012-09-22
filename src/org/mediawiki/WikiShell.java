@@ -103,8 +103,8 @@ public class WikiShell {
 
 		MediaWiki wiki = null;
 
-		// Load the initial MediaWiki from disk to be restored when the
-		// application next starts.
+		// Load the initial MediaWiki from disk, saved when the application last
+		// exited.
 		work("Loading wiki information from disk...");
 		try {
 			try {
@@ -118,7 +118,8 @@ public class WikiShell {
 				workEnd();
 			}
 		} catch (FileNotFoundException e) {
-			// okay, ask for the wiki info
+			// The application didn't last exit, or the user deleted his/her
+			// wiki information file.
 		} catch (ClassNotFoundException e) {
 			System.err.println("Warning: Wiki information cannot be loaded");
 			System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
