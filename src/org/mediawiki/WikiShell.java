@@ -358,6 +358,12 @@ public class WikiShell {
 				builtinCommands.put("replace", r);
 			}
 			builtinCommands.put("replaceregex", new ReplaceRegex());
+			{
+				final AutoReplaceText a = new AutoReplaceText();
+				builtinCommands.put("autoreplacetext", a);
+				builtinCommands.put("autoreplace", a);
+			}
+			builtinCommands.put("autoreplaceregex", new AutoReplaceRegex());
 			builtinCommands.put("append", new AppendText());
 			builtinCommands.put("prepend", new PrependText());
 			{
@@ -2969,6 +2975,140 @@ public class WikiShell {
 			System.err.println();
 			System.err.println("The page name is mandatory and will be requested if not provided.");
 			System.err.println("You will be asked to provide the search regular expression and replacement text, then the case-sensitivity, then an edit summary, then whether your edit is minor. Following this, you will be asked to confirm each replacement with context from the page. Regular expressions are outside the scope of this documentation.");
+		}
+	}
+
+	public static class AutoReplaceText extends AbstractReplacementCommand {
+		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.essentialInput != null)
+				return;
+			final String findText = inputMandatory("   find: ");
+			final String replaceText = input("replace: ");
+
+			final boolean caseSensitive = inputBoolean("case sensitive [y/N]: ", false);
+
+			context.essentialInput = new Object[] { findText, replaceText, caseSensitive };
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
+			final Object[] essentialInput = (Object[]) context.essentialInput;
+			final String findText = (String) essentialInput[0], replaceText = (String) essentialInput[1];
+			final boolean caseSensitive = (Boolean) essentialInput[2];
+			String content = (String) context.temporary;
+			context.temporary = null;
+
+			int modifications = 0;
+			// ciContent is in lower case for case-insensitive searches. Use
+			// 'content' to access the actual content that will be put back on
+			// the wiki.
+			String ciContent = caseSensitive ? content : content.toLowerCase();
+			// ciFindText is in lower case for case-insensitive searches.
+			final String ciFindText = caseSensitive ? findText : findText.toLowerCase();
+			final String ciReplaceText = caseSensitive ? replaceText : replaceText.toLowerCase();
+			int cur = 0, index;
+
+			while ((index = ciContent.indexOf(ciFindText, cur)) != -1) {
+				cur = index + findText.length();
+				content = content.substring(0, index) + replaceText + content.substring(cur);
+
+				ciContent = ciContent.substring(0, index) + ciReplaceText + ciContent.substring(cur);
+
+				cur += replaceText.length() - findText.length();
+
+				modifications++;
+			}
+
+			if (modifications > 0) {
+				final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+				final String editSummary = (String) auxiliaryInput[0];
+				final Boolean minor = (Boolean) auxiliaryInput[1];
+				final MediaWiki.EditToken token = (MediaWiki.EditToken) context.token;
+
+				work("Performing edit...");
+				try {
+					context.wiki.replacePage(token, content, editSummary, true /*- bot */, minor);
+				} finally {
+					workEnd();
+				}
+			} else {
+				System.err.println("Nothing to do");
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Finds and replaces text on the given page on the current wiki.");
+			System.err.println();
+			System.err.println("autoreplace[text] [<page name>]");
+			System.err.println();
+			System.err.println("The page name is mandatory and will be requested if not provided.");
+			System.err.println("You will be asked to provide the search and replacement text, then the case-sensitivity, then an edit summary, then whether your edit is minor. Following this, your selected replacement will automatically be applied to all occurrences of the search text on the page.");
+		}
+	}
+
+	public static class AutoReplaceRegex extends AbstractReplacementCommand {
+		@Override
+		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.essentialInput != null)
+				return;
+			final String find = inputMandatory("find regex: ");
+			try {
+				Pattern.compile(find);
+			} catch (final PatternSyntaxException pse) {
+				System.err.println(pse.getClass().getName() + ": " + pse.getLocalizedMessage());
+				throw new CancellationException();
+			}
+			final String replaceText = input("replace (with $1, $2, ... or \\1, \\2 for captures): ");
+
+			final boolean caseSensitive = inputBoolean("case sensitive [y/N]: ", false);
+
+			final Pattern findRegex = Pattern.compile(find, caseSensitive ? 0 : Pattern.CASE_INSENSITIVE);
+
+			context.essentialInput = new Object[] { findRegex, replaceText };
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
+			final Object[] essentialInput = (Object[]) context.essentialInput;
+			final Pattern findRegex = (Pattern) essentialInput[0];
+			final String replaceText = (String) essentialInput[1];
+			String content = (String) context.temporary;
+			context.temporary = null;
+
+			int modifications = 0;
+
+			final StringBuffer newContent = new StringBuffer();
+			final Matcher m = findRegex.matcher(content);
+			while (m.find()) {
+				m.appendReplacement(newContent, replaceText);
+
+				modifications++;
+			}
+
+			m.appendTail(newContent);
+
+			if (modifications > 0) {
+				final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+				final String editSummary = (String) auxiliaryInput[0];
+				final Boolean minor = (Boolean) auxiliaryInput[1];
+				final MediaWiki.EditToken token = (MediaWiki.EditToken) context.token;
+
+				work("Performing edit...");
+				try {
+					context.wiki.replacePage(token, newContent.toString(), editSummary, true /*- bot */, minor);
+				} finally {
+					workEnd();
+				}
+			} else {
+				System.err.println("Nothing to do");
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Finds and replaces text on the given page on the current wiki using a regular expression.");
+			System.err.println();
+			System.err.println("autoreplaceregex [<page name>]");
+			System.err.println();
+			System.err.println("The page name is mandatory and will be requested if not provided.");
+			System.err.println("You will be asked to provide the search regular expression and replacement text, then the case-sensitivity, then an edit summary, then whether your edit is minor. Following this, your selected replacement will automatically be applied to all occurrences of the search text on the page. Regular expressions are outside the scope of this documentation.");
 		}
 	}
 
