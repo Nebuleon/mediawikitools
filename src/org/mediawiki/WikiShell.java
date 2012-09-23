@@ -69,6 +69,12 @@ public class WikiShell {
 	private static String user = "";
 
 	/**
+	 * <code>true</code> if the user has refused to log in via
+	 * <code>checkLogin</code> during the entire current shell session.
+	 */
+	private static boolean refuseLogin;
+
+	/**
 	 * The current wiki's hostname or IP.
 	 */
 	private static String host = "";
@@ -4163,32 +4169,38 @@ public class WikiShell {
 	}
 
 	protected static void checkLogin(final MediaWiki wiki) throws IOException, NullPointerException, CancellationException {
+		if (refuseLogin)
+			return;
 		try {
-			if (wiki.getCurrentUser().isAnonymous() && inputBoolean("Would you like to log in? [y/N] ", false)) {
-				final Login login = new Login();
+			if (wiki.getCurrentUser().isAnonymous()) {
+				if (inputBoolean("Would you like to log in? [y/N] ", false)) {
+					final Login login = new Login();
 
-				final CommandContext context = new CommandContext();
-				context.wiki = wiki;
+					final CommandContext context = new CommandContext();
+					context.wiki = wiki;
 
-				login.getEssentialInput(context);
-				login.getAuxiliaryInput(context);
+					login.getEssentialInput(context);
+					login.getAuxiliaryInput(context);
 
-				while (true) /*- command retry loop */{
-					try {
-						login.perform(context);
+					while (true) /*- command retry loop */{
+						try {
+							login.perform(context);
 
-						break; // on success
-					} catch (final MediaWiki.MediaWikiException e) {
-						System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
-						if (!inputBoolean("Retry? [Y/n] ", true)) {
-							break;
-						}
-					} catch (final IOException e) {
-						System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
-						if (!inputBoolean("Retry? [Y/n] ", true)) {
-							break;
+							break; // on success
+						} catch (final MediaWiki.MediaWikiException e) {
+							System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+							if (!inputBoolean("Retry? [Y/n] ", true)) {
+								break;
+							}
+						} catch (final IOException e) {
+							System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+							if (!inputBoolean("Retry? [Y/n] ", true)) {
+								break;
+							}
 						}
 					}
+				} else if (inputBoolean("Would you like to stay anonymous for this session? [Y/n] ", true)) {
+					refuseLogin = true;
 				}
 			}
 		} catch (final MediaWiki.MediaWikiException e) {
