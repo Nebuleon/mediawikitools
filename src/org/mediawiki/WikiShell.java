@@ -455,14 +455,14 @@ public class WikiShell {
 						} catch (final CancellationException ce) {
 							continue prompt;
 						}
-					}
+					} else
+						System.err.println(tokens[0] + ": No such command");
 				}
 			}
 		} catch (final CancellationException e) {
 			// we'd go back one level here, but that's not strictly necessary
 		} catch (final NullPointerException e) {
-			// System.err.println();
-			e.printStackTrace();
+			System.err.println();
 		} catch (final IOException e) {
 			e.printStackTrace();
 		} finally {
