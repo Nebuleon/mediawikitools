@@ -3615,7 +3615,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			if (purgeTags.getLength() > 0) {
 				return this;
 			} else
-				throw new MediaWiki.ResponseFormatException("expected <edit> tag not present");
+				throw new MediaWiki.ResponseFormatException("expected <purge> tag not present");
 		} finally {
 			networkLock.unlock();
 		}
