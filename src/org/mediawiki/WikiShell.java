@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -59,7 +60,7 @@ import org.mediawiki.MediaWiki.MediaWikiException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class WikiShell {
-	private static final Map<String, Command> commands = new TreeMap<String, Command>(String.CASE_INSENSITIVE_ORDER);
+	private static final Map<String, Command> builtinCommands = new TreeMap<String, Command>(String.CASE_INSENSITIVE_ORDER);
 
 	/**
 	 * The current username of the person using this shell. May be an IP address
@@ -191,206 +192,205 @@ public class WikiShell {
 		try {
 			{
 				final Connect c = new Connect();
-				commands.put("connect", c);
-				commands.put("open", c);
+				builtinCommands.put("connect", c);
+				builtinCommands.put("open", c);
 			}
-			commands.put("login", new Login());
-			commands.put("logout", new Logout());
+			builtinCommands.put("login", new Login());
+			builtinCommands.put("logout", new Logout());
 			{
 				final SetCompression s = new SetCompression();
-				commands.put("compress", s);
-				commands.put("compression", s);
+				builtinCommands.put("compress", s);
+				builtinCommands.put("compression", s);
 			}
 			{
 				final SetMaximumLag s = new SetMaximumLag();
-				commands.put("maximumlag", s);
-				commands.put("maxlag", s);
+				builtinCommands.put("maximumlag", s);
+				builtinCommands.put("maxlag", s);
 			}
 			{
 				final Namespaces n = new Namespaces();
-				commands.put("namespaces", n);
-				commands.put("ns", n);
+				builtinCommands.put("namespaces", n);
+				builtinCommands.put("ns", n);
 			}
 			{
 				final PageInformation p = new PageInformation();
-				commands.put("pageinfo", p);
-				commands.put("page", p);
+				builtinCommands.put("pageinfo", p);
+				builtinCommands.put("page", p);
 			}
 			{
 				final UserInformation u = new UserInformation();
-				commands.put("userinfo", u);
-				commands.put("user", u);
+				builtinCommands.put("userinfo", u);
+				builtinCommands.put("user", u);
 			}
 			{
 				final RevisionInformation r = new RevisionInformation();
-				commands.put("revinfo", r);
-				commands.put("rev", r);
-				commands.put("history", r);
-				commands.put("hist", r);
+				builtinCommands.put("revinfo", r);
+				builtinCommands.put("rev", r);
+				builtinCommands.put("history", r);
+				builtinCommands.put("hist", r);
 			}
 			{
 				final FileRevisionInformation f = new FileRevisionInformation();
-				commands.put("imagerevinfo", f);
-				commands.put("imagerev", f);
-				commands.put("imageinfo", f);
-				commands.put("fileinfo", f);
-				commands.put("filerevinfo", f);
-				commands.put("filerev", f);
-				commands.put("imagehistory", f);
-				commands.put("imagehist", f);
-				commands.put("filehistory", f);
-				commands.put("filehist", f);
+				builtinCommands.put("imagerevinfo", f);
+				builtinCommands.put("imagerev", f);
+				builtinCommands.put("imageinfo", f);
+				builtinCommands.put("fileinfo", f);
+				builtinCommands.put("filerevinfo", f);
+				builtinCommands.put("filerev", f);
+				builtinCommands.put("imagehistory", f);
+				builtinCommands.put("imagehist", f);
+				builtinCommands.put("filehistory", f);
+				builtinCommands.put("filehist", f);
 			}
 			{
 				final InterlanguageLinks i = new InterlanguageLinks();
-				commands.put("languages", i);
-				commands.put("langs", i);
-				commands.put("languagelinks", i);
-				commands.put("langlinks", i);
-				commands.put("interlanguage", i);
-				commands.put("interlang", i);
+				builtinCommands.put("languages", i);
+				builtinCommands.put("langs", i);
+				builtinCommands.put("languagelinks", i);
+				builtinCommands.put("langlinks", i);
+				builtinCommands.put("interlanguage", i);
+				builtinCommands.put("interlang", i);
 			}
 			{
 				final Links l = new Links();
-				commands.put("links", l);
-				commands.put("linksin", l);
-				commands.put("wikilinks", l);
-				commands.put("wikilinksin", l);
+				builtinCommands.put("links", l);
+				builtinCommands.put("linksin", l);
+				builtinCommands.put("wikilinks", l);
+				builtinCommands.put("wikilinksin", l);
 			}
 			{
 				final ExternalLinks e = new ExternalLinks();
-				commands.put("externallinks", e);
-				commands.put("extlinks", e);
+				builtinCommands.put("externallinks", e);
+				builtinCommands.put("extlinks", e);
 			}
 			{
 				final PageCategories p = new PageCategories();
-				commands.put("categories", p);
-				commands.put("cats", p);
-				commands.put("pagecategories", p);
-				commands.put("pagecats", p);
+				builtinCommands.put("categories", p);
+				builtinCommands.put("cats", p);
+				builtinCommands.put("pagecategories", p);
+				builtinCommands.put("pagecats", p);
 			}
 			{
 				final TransclusionsInPage t = new TransclusionsInPage();
-				commands.put("transclusionsin", t);
-				commands.put("templatesin", t);
-				commands.put("templates", t);
+				builtinCommands.put("transclusionsin", t);
+				builtinCommands.put("templatesin", t);
+				builtinCommands.put("templates", t);
 			}
 			{
 				final TransclusionsOfPage t = new TransclusionsOfPage();
-				commands.put("transclusionsof", t);
-				commands.put("transclusions", t);
+				builtinCommands.put("transclusionsof", t);
+				builtinCommands.put("transclusions", t);
 			}
 			{
 				final UsesOfImage u = new UsesOfImage();
-				commands.put("usesof", u);
-				commands.put("imageusage", u);
-				commands.put("imageuses", u);
+				builtinCommands.put("usesof", u);
+				builtinCommands.put("imageusage", u);
+				builtinCommands.put("imageuses", u);
 			}
 			{
 				final LinksToPage l = new LinksToPage();
-				commands.put("linksto", l);
-				commands.put("whatlinkshere", l);
+				builtinCommands.put("linksto", l);
+				builtinCommands.put("whatlinkshere", l);
 			}
 			{
 				final CategoryInformation c = new CategoryInformation();
-				commands.put("categoryinfo", c);
-				commands.put("category", c);
-				commands.put("catinfo", c);
-				commands.put("cat", c);
+				builtinCommands.put("categoryinfo", c);
+				builtinCommands.put("category", c);
+				builtinCommands.put("catinfo", c);
+				builtinCommands.put("cat", c);
 			}
-			commands.put("read", new Read());
+			builtinCommands.put("read", new Read());
 			{
 				final ReadRevision r = new ReadRevision();
-				commands.put("readrev", r);
-				commands.put("readrevision", r);
-				commands.put("revisioncontent", r);
-				commands.put("revcontent", r);
-				commands.put("revision", r);
-				commands.put("rev", r);
+				builtinCommands.put("readrev", r);
+				builtinCommands.put("readrevision", r);
+				builtinCommands.put("revisioncontent", r);
+				builtinCommands.put("revcontent", r);
+				builtinCommands.put("revision", r);
 			}
 			{
 				final DownloadFileRevision d = new DownloadFileRevision();
-				commands.put("download", d);
-				commands.put("downloadimage", d);
-				commands.put("downloadfile", d);
-				commands.put("saveimage", d);
-				commands.put("savefile", d);
-				commands.put("imagedownload", d);
-				commands.put("filedownload", d);
-				commands.put("imagesave", d);
-				commands.put("filesave", d);
+				builtinCommands.put("download", d);
+				builtinCommands.put("downloadimage", d);
+				builtinCommands.put("downloadfile", d);
+				builtinCommands.put("saveimage", d);
+				builtinCommands.put("savefile", d);
+				builtinCommands.put("imagedownload", d);
+				builtinCommands.put("filedownload", d);
+				builtinCommands.put("imagesave", d);
+				builtinCommands.put("filesave", d);
 			}
 			{
 				final AllCategories a = new AllCategories();
-				commands.put("allcategories", a);
-				commands.put("allcats", a);
-				commands.put("listcategories", a);
-				commands.put("listcats", a);
+				builtinCommands.put("allcategories", a);
+				builtinCommands.put("allcats", a);
+				builtinCommands.put("listcategories", a);
+				builtinCommands.put("listcats", a);
 			}
 			{
 				final AllFiles a = new AllFiles();
-				commands.put("allimages", a);
-				commands.put("listimages", a);
-				commands.put("allfiles", a);
-				commands.put("listfiles", a);
+				builtinCommands.put("allimages", a);
+				builtinCommands.put("listimages", a);
+				builtinCommands.put("allfiles", a);
+				builtinCommands.put("listfiles", a);
 			}
 			{
 				final AllPages a = new AllPages();
-				commands.put("allpages", a);
-				commands.put("listpages", a);
+				builtinCommands.put("allpages", a);
+				builtinCommands.put("listpages", a);
 			}
 			{
 				final AllUsers a = new AllUsers();
-				commands.put("allusers", a);
-				commands.put("listusers", a);
+				builtinCommands.put("allusers", a);
+				builtinCommands.put("listusers", a);
 			}
-			commands.put("purge", new Purge());
-			commands.put("newsection", new NewSection());
+			builtinCommands.put("purge", new Purge());
+			builtinCommands.put("newsection", new NewSection());
 			{
 				final ReplaceText r = new ReplaceText();
-				commands.put("replacetext", r);
-				commands.put("replace", r);
+				builtinCommands.put("replacetext", r);
+				builtinCommands.put("replace", r);
 			}
-			commands.put("replaceregex", new ReplaceRegex());
-			commands.put("append", new AppendText());
-			commands.put("prepend", new PrependText());
+			builtinCommands.put("replaceregex", new ReplaceRegex());
+			builtinCommands.put("append", new AppendText());
+			builtinCommands.put("prepend", new PrependText());
 			{
 				final CreatePage c = new CreatePage();
-				commands.put("createpage", c);
-				commands.put("create", c);
+				builtinCommands.put("createpage", c);
+				builtinCommands.put("create", c);
 			}
-			commands.put("replacepage", new ReplacePage());
+			builtinCommands.put("replacepage", new ReplacePage());
 			{
 				final CreateOrReplacePage c = new CreateOrReplacePage();
-				commands.put("putpage", c);
-				commands.put("put", c);
+				builtinCommands.put("putpage", c);
+				builtinCommands.put("put", c);
 			}
 			{
 				final MovePage m = new MovePage();
-				commands.put("movepage", m);
-				commands.put("move", m);
+				builtinCommands.put("movepage", m);
+				builtinCommands.put("move", m);
 			}
 			{
 				final UploadFile u = new UploadFile();
-				commands.put("uploadimage", u);
-				commands.put("uploadfile", u);
-				commands.put("upload", u);
+				builtinCommands.put("uploadimage", u);
+				builtinCommands.put("uploadfile", u);
+				builtinCommands.put("upload", u);
 			}
-			commands.put("rollback", new Rollback());
-			commands.put("undo", new Undo());
-			commands.put("delete", new Delete());
-			commands.put("protect", new Protect());
+			builtinCommands.put("rollback", new Rollback());
+			builtinCommands.put("undo", new Undo());
+			builtinCommands.put("delete", new Delete());
+			builtinCommands.put("protect", new Protect());
 			{
 				final UserGroupModification u = new UserGroupModification();
-				commands.put("usergroups", u);
-				commands.put("userrights", u);
+				builtinCommands.put("usergroups", u);
+				builtinCommands.put("userrights", u);
 			}
-			commands.put("repeat", new UntilCancelledRepeat());
-			commands.put("for", new ForPages());
-			commands.put("count", new CountPages());
-			commands.put("help", new Help());
-			commands.put("commands", new CommandList());
-			commands.put("make", new MakeCommand());
+			builtinCommands.put("repeat", new UntilCancelledRepeat());
+			builtinCommands.put("for", new ForPages());
+			builtinCommands.put("count", new CountPages());
+			builtinCommands.put("help", new Help());
+			builtinCommands.put("commands", new CommandList());
+			builtinCommands.put("make", new MakeCommand());
 		} finally {
 			workEnd();
 		}
@@ -404,9 +404,9 @@ public class WikiShell {
 				final String[] tokens = line.split(" +", 2);
 
 				if ((tokens.length > 0) && (tokens[0].length() > 0)) {
-					final Command command = commands.get(tokens[0]);
+					final Command command = getCommand(tokens[0]);
 					if (command != null) {
-						final CommandContext context = new CommandContext();
+						final CommandContext context = getCommandContext(tokens[0]);
 
 						context.arguments = tokens.length > 1 ? tokens[1] : "";
 						context.wiki = wiki;
@@ -454,38 +454,6 @@ public class WikiShell {
 							}
 						} catch (final CancellationException ce) {
 							continue prompt;
-						}
-					} else {
-						File f = new File(tokens[0] + ".wcom");
-						if (f.exists()) {
-							// Custom Command Detected
-							ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f));
-							String commandName = (String) ois.readUTF();
-							try {
-								CommandContext cc = (CommandContext) ois.readObject();
-								cc.wiki = wiki;
-								System.out.println(cc);
-								if (commands.containsKey(commandName)) {
-									commands.get(commandName).getToken(cc);
-									commands.get(commandName).perform(cc);
-
-								} else {
-									System.err.println("Invalid Custom Command found: " + commandName);
-								}
-							} catch (ClassNotFoundException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							} catch (MediaWikiException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							} catch (ParseException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-							ois.close();
-
-						} else {
-							System.err.println(tokens[0] + ": No such command");
 						}
 					}
 				}
@@ -831,7 +799,7 @@ public class WikiShell {
 		}
 
 		public void perform(final CommandContext context) throws IOException, MediaWikiException, ParseException {
-			final Command command = commands.get(context.essentialInput);
+			final Command command = getCommand((String) context.essentialInput);
 
 			if (command != null) {
 				command.help();
@@ -849,11 +817,54 @@ public class WikiShell {
 		}
 	}
 
+	private static Command getCommand(String name) {
+		// 1. Builtins. (Done in this order to prevent shadowing of builtins.)
+		Command result = builtinCommands.get(name);
+		if (result != null)
+			return result;
+		// 2. Custom command.
+		try {
+			ObjectInputStream loader = new ObjectInputStream(new BufferedInputStream(new FileInputStream(new File(new File(System.getProperty("user.home"), ".wikishell-cmds"), name + ".wcom"))));
+			try {
+				String builtinName = loader.readUTF();
+				return builtinCommands.get(builtinName);
+			} finally {
+				loader.close();
+			}
+		} catch (IOException ioe) {
+			// eat
+			return null;
+		}
+	}
+
+	private static CommandContext getCommandContext(String name) {
+		// 1. Builtins. (Done in this order to prevent shadowing of builtins.)
+		Command result = builtinCommands.get(name);
+		if (result != null)
+			return new CommandContext();
+		// 2. Custom command.
+		try {
+			ObjectInputStream loader = new ObjectInputStream(new BufferedInputStream(new FileInputStream(new File(new File(System.getProperty("user.home"), ".wikishell-cmds"), name + ".wcom"))));
+			try {
+				loader.readUTF(); // Dummy read to skip builtin name
+				return (CommandContext) loader.readObject();
+			} finally {
+				loader.close();
+			}
+		} catch (ClassNotFoundException shouldNotHappen) {
+			// We know that the CommandContext class exists. Eat.
+			return new CommandContext();
+		} catch (IOException ioe) {
+			// eat
+			return new CommandContext();
+		}
+	}
+
 	public static class CommandList extends AbstractCommand {
 		public void perform(final CommandContext context) throws IOException, MediaWikiException, ParseException {
-			final Map<Command, StringBuilder> commandAliases = new IdentityHashMap<Command, StringBuilder>(commands.size());
+			final Map<Command, StringBuilder> commandAliases = new IdentityHashMap<Command, StringBuilder>(builtinCommands.size());
 
-			for (final Map.Entry<String, Command> entry : commands.entrySet()) {
+			for (final Map.Entry<String, Command> entry : builtinCommands.entrySet()) {
 				StringBuilder aliasesForCommand = commandAliases.get(entry.getValue());
 				if (aliasesForCommand == null) {
 					aliasesForCommand = new StringBuilder(entry.getKey());
@@ -863,10 +874,21 @@ public class WikiShell {
 				}
 			}
 
+			File[] customCommandFiles = new File(System.getProperty("user.home"), ".wikishell-cmds").listFiles(new FilenameFilter() {
+				public boolean accept(File dir, String name) {
+					return name.endsWith(".wcom") && !builtinCommands.containsKey(name.substring(0, name.length() - ".wcom".length()));
+				}
+			});
+
 			final List<String> lines = new ArrayList<String>();
 			for (final StringBuilder line : commandAliases.values()) {
 				lines.add(line.toString());
 			}
+
+			for (File customCommandFile : customCommandFiles) {
+				lines.add(customCommandFile.getName().substring(0, customCommandFile.getName().length() - ".wcom".length()));
+			}
+
 			Collections.sort(lines);
 
 			for (final String line : lines) {
@@ -2084,7 +2106,7 @@ public class WikiShell {
 		public void help() throws IOException {
 			System.err.println("Displays the content of the given revision on the current wiki.");
 			System.err.println();
-			System.err.println("{readrev[ision] | rev[ision][content]} [<revision number>]");
+			System.err.println("{readrev[ision] | revision[content] | revcontent} [<revision number>]");
 			System.err.println();
 			System.err.println("The revision number is mandatory and will be requested if not provided.");
 		}
@@ -2603,57 +2625,98 @@ public class WikiShell {
 	}
 
 	public static class MakeCommand extends AbstractCommand {
+		@Override
+		public void parseArguments(final CommandContext context) {
+			final String[] arguments = context.arguments.split(" +", 3);
+			context.arguments = arguments.length == 3 ? arguments[2] : "";
+
+			if (arguments.length >= 1) {
+				context.essentialInput = arguments[0];
+			}
+			if (arguments.length >= 2) {
+				context.auxiliaryInput = arguments[1];
+			}
+		}
 
 		@Override
 		public void getEssentialInput(CommandContext context) throws IOException, NullPointerException, CancellationException {
-			// TODO Complete this
-			// TODO
-			// TODO
+			if (context.essentialInput != null)
+				return;
+			context.essentialInput = inputMandatory("  make a command named: ");
+		}
+
+		@Override
+		public void getAuxiliaryInput(CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.auxiliaryInput != null)
+				return;
+			context.auxiliaryInput = inputMandatory("from the command named: ");
 		}
 
 		public void perform(CommandContext context) throws IOException, MediaWikiException, ParseException {
-			String[] args = context.arguments.split(" ");
-			if (args.length != 2) {
-				System.err.println("Invalid Arguments. Expected two, got: " + args.length);
-				return;
+			String presetCommandName = (String) context.essentialInput, builtinCommandName = (String) context.auxiliaryInput;
+
+			if (builtinCommands.containsKey(presetCommandName)) {
+				System.err.println(presetCommandName + ": A builtin command of this name already exists");
+				throw new CancellationException();
 			}
 
-			if (commands.containsKey(args[0])) {
-				System.err.println("Cannot override inbuilt commands");
+			Command builtinCommand = builtinCommands.get(builtinCommandName);
+			if (builtinCommand == null) {
+				System.err.println(builtinCommandName + ": No such builtin command");
 				return;
+			} else if (builtinCommand instanceof Login) {
+				System.err.println("For security reasons, you cannot preset input into the 'login' command.");
 			}
 
-			Command c = commands.get(args[1]);
-			if (c == null) {
-				System.err.println("Invalid Command specified. Cannot find command: " + args[1]);
-				return;
+			CommandContext storedContext = new CommandContext();
+
+			// 1. If the command asks for a page name, ask the user if s/he
+			// wants to preset that.
+			builtinCommand.getPageName(storedContext);
+			boolean requestsPageName = storedContext.pageName != null;
+			if (requestsPageName) {
+				if (!inputBoolean(String.format("Preset the page name into '%s'? [y/N] ", presetCommandName), false)) {
+					// If not preset, unstore it.
+					storedContext.pageName = null;
+				}
 			}
-			File f = new File(args[0] + ".wcom");
 
-			CommandContext cc = new CommandContext();
+			// 2. If the command asks for essential input, ask the user if s/he
+			// wants to preset that.
+			builtinCommand.getEssentialInput(storedContext);
+			boolean requestsEssentialInput = storedContext.essentialInput != null;
+			if (requestsEssentialInput) {
+				if (!inputBoolean(String.format(requestsPageName ? "Preset the settings after the page name into '%s'? [y/N] " : "Preset these settings into '%s'? [y/N] ", presetCommandName), false)) {
+					storedContext.essentialInput = null;
+				}
+			}
 
-			c.getEssentialInput(cc);
-			c.getAuxiliaryInput(cc);
-			c.getPageName(cc);
+			// 3. If the command asks for auxiliary input, ask the user if s/he
+			// wants to preset that.
+			builtinCommand.getAuxiliaryInput(storedContext);
+			if (storedContext.auxiliaryInput != null) {
+				if (!inputBoolean(String.format(requestsEssentialInput ? "Preset these additional settings into '%s'? [y/N] " : "Preset these settings into '%s'? [y/N] ", presetCommandName), false)) {
+					storedContext.essentialInput = null;
+				}
+			}
 
-			ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(f));
-			oos.writeUTF(args[1]);
-			oos.writeObject(cc);
-			oos.flush();
-			oos.close();
-
+			ObjectOutputStream saver = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(new File(new File(System.getProperty("user.home"), ".wikishell-cmds"), presetCommandName + ".wcom"))));
+			try {
+				saver.writeUTF(builtinCommandName);
+				saver.writeObject(storedContext);
+			} finally {
+				saver.close();
+			}
 		}
 
 		public void help() throws IOException {
-			System.err.println("Creates an alias for a command with preset input");
+			System.err.println("Creates a version of a command with some preset input.");
 			System.err.println();
-			System.err.println("make [<aliasname>] [<command>]");
-			System.err.println("Both aliasname and command are required input, and will be requested if not given");
-			System.err.println("You will be requested to fill out the information required by the command to run without");
-			System.err.println("requested when run in the future");
-
+			System.err.println("make [<new command>] [<command>]");
+			System.err.println();
+			System.err.println("Both parameters are mandatory, and will be requested if not provided.");
+			System.err.println("Some, or all, of the input that needs to be provided to the main command can be preset into the new command, such that only the input that was not preset is requested when using the new command. If all of the input is preset, no input will be requested except for particularly destructive commands like 'delete', as well as the text replacement commands that require confirmation for each occurrence.");
 		}
-
 	}
 
 	public static class NewSection extends AbstractEditTokenCommand {
@@ -3534,7 +3597,7 @@ public class WikiShell {
 			if (arguments.length() > 0) {
 				final String[] tokens = arguments.split(" +", 2);
 
-				final Command command = commands.get(tokens[0]);
+				final Command command = getCommand(tokens[0]);
 				if (command != null) {
 					context.arguments = tokens.length >= 2 ? tokens[1] : "";
 					context.essentialInput = tokens[0];
@@ -3562,7 +3625,7 @@ public class WikiShell {
 					final String[] tokens = line.split(" +", 2);
 
 					if ((tokens.length > 0) && (tokens[0].length() > 0)) {
-						final Command command = commands.get(tokens[0]);
+						final Command command = getCommand(tokens[0]);
 						if (command != null) {
 							context.arguments = tokens.length >= 2 ? tokens[1] : "";
 							context.essentialInput = tokens[0];
@@ -3582,9 +3645,9 @@ public class WikiShell {
 		public void confirm(final CommandContext context) throws IOException, NullPointerException, CancellationException {}
 
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
-			final Command command = commands.get(context.essentialInput);
+			final Command command = getCommand((String) context.essentialInput);
 			MediaWiki wiki = context.wiki;
-			final CommandContext repeatedContext = new CommandContext();
+			final CommandContext repeatedContext = getCommandContext((String) context.essentialInput);
 			boolean requestsPageName, requestsEssentialInput, requestsAuxiliaryInput, requestsConfirmation;
 			boolean repeatEssentialInput = false, repeatAuxiliaryInput = false;
 
@@ -3747,7 +3810,7 @@ public class WikiShell {
 			if (arguments.length() > 0) {
 				final String[] tokens = arguments.split(" +", 2);
 
-				final Command command = commands.get(tokens[0]);
+				final Command command = getCommand(tokens[0]);
 				if (command != null) {
 					if (command instanceof IterableCommand) {
 						context.arguments = tokens.length >= 2 ? tokens[1] : "";
@@ -3771,7 +3834,7 @@ public class WikiShell {
 				final String[] tokens = line.split(" +", 2);
 
 				if ((tokens.length > 0) && (tokens[0].length() > 0)) {
-					final Command command = commands.get(tokens[0]);
+					final Command command = getCommand(tokens[0]);
 					if (command != null) {
 						if (command instanceof IterableCommand) {
 							context.arguments = tokens.length >= 2 ? tokens[1] : "";
@@ -3790,9 +3853,9 @@ public class WikiShell {
 			MediaWiki wiki = context.wiki;
 			// 1. Gather the list of pages output by the command.
 			final List<String> pageNames = new LinkedList<String>();
-			final IterableCommand command = (IterableCommand) commands.get(context.essentialInput);
+			final IterableCommand command = (IterableCommand) getCommand((String) context.essentialInput);
 			// For that, use a second context.
-			final CommandContext iteratingCommandContext = new CommandContext();
+			final CommandContext iteratingCommandContext = getCommandContext((String) context.essentialInput);
 
 			iteratingCommandContext.arguments = context.arguments;
 			iteratingCommandContext.wiki = wiki;
@@ -3864,9 +3927,9 @@ public class WikiShell {
 					final String[] tokens = line.split(" +", 2);
 
 					if ((tokens.length > 0) && (tokens[0].length() > 0)) {
-						final Command repeatedCommand = commands.get(tokens[0]);
+						final Command repeatedCommand = getCommand(tokens[0]);
 						if (repeatedCommand != null) {
-							final CommandContext repeatedContext = new CommandContext();
+							final CommandContext repeatedContext = getCommandContext(tokens[0]);
 							// The first invocation establishes which inputs are
 							// repeated.
 							// Further invocations use these repeated inputs.
@@ -4022,8 +4085,8 @@ public class WikiShell {
 		@Override
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
 			MediaWiki wiki = context.wiki;
-			final IterableCommand command = (IterableCommand) commands.get(context.essentialInput);
-			final CommandContext iteratingCommandContext = new CommandContext();
+			final IterableCommand command = (IterableCommand) getCommand((String) context.essentialInput);
+			final CommandContext iteratingCommandContext = getCommandContext((String) context.essentialInput);
 
 			iteratingCommandContext.arguments = context.arguments;
 			iteratingCommandContext.wiki = wiki;
