@@ -68,7 +68,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	// TODO Add undelete
 	// TODO Add watch-add/watch-del/watch-list/watch-newedits
 	// TODO Add patrol
-	// TODO Add Special:Recentchanges
+	// TODO Add Special:Recentchanges, Special:Contributions
 
 	private static final long serialVersionUID = 1L;
 
@@ -3570,6 +3570,57 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
+	// - - - PURGE - - -
+
+	/**
+	 * Purges one or more pages on the wiki represented by this
+	 * <tt>MediaWiki</tt>.
+	 * <p>
+	 * Silently ignores failures to purge individual pages, but not the lack of
+	 * a reply to the purge request.
+	 * 
+	 * @param pages
+	 *            The full name(s) of the page(s) to purge.
+	 * @return this <tt>MediaWiki</tt>
+	 * @throws IOException
+	 * @throws MediaWiki.MediaWikiException
+	 */
+	public MediaWiki purge(String... fullPageNames) throws IOException, MediaWiki.MediaWikiException {
+		if (fullPageNames.length == 0)
+			return this;
+
+		Map<String, String> getParams = paramValuesToMap("action", "purge", "format", "xml");
+		Integer maxLag = getMaxLag();
+		if (maxLag != null)
+			getParams.put("maxlag", maxLag.toString());
+		StringBuilder titles = new StringBuilder();
+		for (String title : fullPageNames) {
+			if (titles.length() > 0)
+				titles.append('|');
+			titles.append(title);
+		}
+
+		Map<String, String> postParams = paramValuesToMap("titles", titles.toString());
+
+		String url = createApiGetUrl(getParams);
+
+		networkLock.lock();
+		try {
+			InputStream in = post(url, postParams);
+			Document xml = parse(in);
+			checkError(xml);
+
+			NodeList purgeTags = xml.getElementsByTagName("purge");
+
+			if (purgeTags.getLength() > 0) {
+				return this;
+			} else
+				throw new MediaWiki.ResponseFormatException("expected <edit> tag not present");
+		} finally {
+			networkLock.unlock();
+		}
+	}
+
 	// - - - EDIT - - -
 
 	/**
@@ -3911,6 +3962,80 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		if (maxLag != null)
 			getParams.put("maxlag", maxLag.toString());
 		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()), "undo", Long.toString(revisionID));
+		if (editSummary != null)
+			postParams.put("summary", editSummary);
+		if (bot)
+			postParams.put("bot", "true");
+		if (minor != null)
+			postParams.put(minor ? "minor" : "notminor", "true");
+		if (editToken.getLastRevisionTime() != null)
+			postParams.put("basetimestamp", iso8601TimestampParser.format(editToken.getLastRevisionTime()));
+
+		String url = createApiGetUrl(getParams);
+
+		networkLock.lock();
+		try {
+			InputStream in = post(url, postParams);
+			Document xml = parse(in);
+			checkError(xml);
+
+			NodeList editTags = xml.getElementsByTagName("edit");
+
+			if (editTags.getLength() > 0) {
+				Element editTag = (Element) editTags.item(0);
+
+				if (editTag.hasAttribute("result")) {
+					if (editTag.getAttribute("result").equals("Success"))
+						return this;
+					else
+						throw new MediaWiki.ActionFailureException(editTag.getAttribute("result"));
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <edit result=\"\"> attribute not present");
+			} else
+				throw new MediaWiki.ResponseFormatException("expected <edit> tag not present");
+		} finally {
+			networkLock.unlock();
+		}
+	}
+
+	// - - - PREPEND AND APPEND - - -
+
+	/**
+	 * Prepends (i.e. writes text before the start) or appends (i.e. writes text
+	 * after the end) some text to the page embodied by the specified
+	 * <code>editToken</code>.
+	 * 
+	 * @param editToken
+	 *            The <tt>EditToken</tt> describing the page to add the text to
+	 *            and containing information to detect conflicts. This is gotten
+	 *            using <code>startEdit</code>.
+	 * @param text
+	 *            The text to add.
+	 * @param atEnd
+	 *            If <code>true</code>, text will be added after the end of the
+	 *            page. If <code>false</code>, text will be added before the
+	 *            start of the page.
+	 * @param editSummary
+	 *            The summary to be used to describe the edit that adds the
+	 *            text..
+	 * @param bot
+	 *            Whether to mark the edit that adds the text as made by a bot (
+	 *            <code>true</code>) or not (<code>false</code>).
+	 * @param minor
+	 *            Whether to mark the edit that adds the text as minor (
+	 *            <code>true</code>) or not ( <code>false</code>) or to use the
+	 *            value in <tt>Special:Preferences</tt> for the currently-logged
+	 *            in user of this <tt>MediaWiki</tt>.
+	 * @return this <tt>MediaWiki</tt>
+	 * @throws IOException
+	 * @throws MediaWiki.MediaWikiException
+	 */
+	public MediaWiki addText(final MediaWiki.EditToken editToken, String text, boolean atEnd, String editSummary, boolean bot, Boolean minor) throws IOException, MediaWiki.MediaWikiException {
+		Map<String, String> getParams = paramValuesToMap("action", "edit", "format", "xml");
+		Integer maxLag = getMaxLag();
+		if (maxLag != null)
+			getParams.put("maxlag", maxLag.toString());
+		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()), atEnd ? "appendtext" : "prependtext", text);
 		if (editSummary != null)
 			postParams.put("summary", editSummary);
 		if (bot)

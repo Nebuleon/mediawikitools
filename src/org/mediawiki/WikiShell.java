@@ -116,6 +116,8 @@ public class WikiShell {
 				}
 			} finally {
 				workEnd();
+				if (wiki != null)
+					System.err.println("Loaded wiki information from disk");
 			}
 		} catch (FileNotFoundException e) {
 			// The application didn't last exit, or the user deleted his/her
@@ -298,6 +300,15 @@ public class WikiShell {
 			}
 			commands.put("read", new Read());
 			{
+				final ReadRevision r = new ReadRevision();
+				commands.put("readrev", r);
+				commands.put("readrevision", r);
+				commands.put("revisioncontent", r);
+				commands.put("revcontent", r);
+				commands.put("revision", r);
+				commands.put("rev", r);
+			}
+			{
 				final DownloadFileRevision d = new DownloadFileRevision();
 				commands.put("download", d);
 				commands.put("downloadimage", d);
@@ -333,6 +344,7 @@ public class WikiShell {
 				commands.put("allusers", a);
 				commands.put("listusers", a);
 			}
+			commands.put("purge", new Purge());
 			commands.put("newsection", new NewSection());
 			{
 				final ReplaceText r = new ReplaceText();
@@ -340,6 +352,8 @@ public class WikiShell {
 				commands.put("replace", r);
 			}
 			commands.put("replaceregex", new ReplaceRegex());
+			commands.put("append", new AppendText());
+			commands.put("prepend", new PrependText());
 			{
 				final CreatePage c = new CreatePage();
 				commands.put("createpage", c);
@@ -1984,7 +1998,63 @@ public class WikiShell {
 			System.err.println();
 			System.err.println("read [<page name>]");
 			System.err.println();
-			System.err.println("The page name name is mandatory and will be requested if not provided.");
+			System.err.println("The page name is mandatory and will be requested if not provided.");
+		}
+	}
+
+	public static class ReadRevision extends AbstractCommand {
+		@Override
+		public void parseArguments(final CommandContext context) {
+			final String arguments = context.arguments.trim();
+			if (arguments.length() > 0) {
+				try {
+					context.essentialInput = Long.valueOf(arguments);
+				} catch (NumberFormatException nfe) {
+					// ask the user for the revision number later
+				}
+				context.arguments = "";
+			}
+		}
+
+		@Override
+		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.essentialInput != null)
+				return;
+			try {
+				context.essentialInput = Long.valueOf(inputMandatory("revision number: "));
+			} catch (NumberFormatException nfe) {
+				System.err.println("Invalid input");
+				throw new CancellationException();
+			}
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+			Iterator<MediaWiki.Revision> ri;
+			work("Getting revision...");
+			try {
+				ri = context.wiki.getRevisions(true, (Long) context.essentialInput);
+			} finally {
+				workEnd();
+			}
+
+			final MediaWiki.Revision r = next(ri);
+			if (r != null) {
+				if (r.isContentHidden()) {
+					System.err.println(context.essentialInput + ": Hidden content");
+				} else {
+					System.out.println(r.getContent());
+				}
+			} else {
+				System.err.println(context.essentialInput + ": No such revision");
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Displays the content of the given revision on the current wiki.");
+			System.err.println();
+			System.err.println("{readrev[ision] | rev[ision][content]} [<revision number>]");
+			System.err.println();
+			System.err.println("The revision number is mandatory and will be requested if not provided.");
 		}
 	}
 
@@ -2481,6 +2551,25 @@ public class WikiShell {
 		}
 	}
 
+	public static class Purge extends AbstractCommand {
+		public void perform(CommandContext context) throws IOException, MediaWikiException, ParseException {
+			work("Purging...");
+			try {
+				context.wiki.purge(context.pageName);
+			} finally {
+				workEnd();
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Purges the cache of a page on the current wiki.");
+			System.err.println();
+			System.err.println("purge [<page name>]");
+			System.err.println();
+			System.err.println("The page name is mandatory and will be requested if not provided.");
+		}
+	}
+
 	public static class NewSection extends AbstractEditTokenCommand {
 		@Override
 		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
@@ -2722,7 +2811,7 @@ public class WikiShell {
 		}
 	}
 
-	public static abstract class AbstractEntirePageWriteCommand extends AbstractEditTokenCommand {
+	public static abstract class AbstractTextWriteCommand extends AbstractEditTokenCommand {
 		@Override
 		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
 			if (context.essentialInput != null)
@@ -2748,7 +2837,7 @@ public class WikiShell {
 		}
 	}
 
-	public static class CreatePage extends AbstractEntirePageWriteCommand {
+	public static class CreatePage extends AbstractTextWriteCommand {
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 			final String editSummary = (String) auxiliaryInput[0];
@@ -2774,7 +2863,7 @@ public class WikiShell {
 		}
 	}
 
-	public static class ReplacePage extends AbstractEntirePageWriteCommand {
+	public static class ReplacePage extends AbstractTextWriteCommand {
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 			final String editSummary = (String) auxiliaryInput[0];
@@ -2800,7 +2889,7 @@ public class WikiShell {
 		}
 	}
 
-	public static class CreateOrReplacePage extends AbstractEntirePageWriteCommand {
+	public static class CreateOrReplacePage extends AbstractTextWriteCommand {
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 			final String editSummary = (String) auxiliaryInput[0];
@@ -2823,6 +2912,58 @@ public class WikiShell {
 			System.err.println();
 			System.err.println("The page name is mandatory and will be requested if not provided.");
 			System.err.println("You will be asked to provide the new text of the page, then an edit summary, then whether your edit is minor.");
+		}
+	}
+
+	public static class AppendText extends AbstractTextWriteCommand {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
+			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+			final String editSummary = (String) auxiliaryInput[0];
+			final Boolean minor = (Boolean) auxiliaryInput[1];
+			final MediaWiki.EditToken token = (MediaWiki.EditToken) context.token;
+			final String text = (String) context.essentialInput;
+
+			work("Performing edit...");
+			try {
+				context.wiki.addText(token, text, true /*- at end */, editSummary, true /*- bot */, minor);
+			} finally {
+				workEnd();
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Adds text to the end of a page on the current wiki.");
+			System.err.println();
+			System.err.println("append [<page name>]");
+			System.err.println();
+			System.err.println("The page name is mandatory and will be requested if not provided.");
+			System.err.println("You will be asked to provide the text to add to the end of the page, then an edit summary, then whether your edit is minor.");
+		}
+	}
+
+	public static class PrependText extends AbstractTextWriteCommand {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
+			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+			final String editSummary = (String) auxiliaryInput[0];
+			final Boolean minor = (Boolean) auxiliaryInput[1];
+			final MediaWiki.EditToken token = (MediaWiki.EditToken) context.token;
+			final String text = (String) context.essentialInput;
+
+			work("Performing edit...");
+			try {
+				context.wiki.addText(token, text, false /*- not at end */, editSummary, true /*- bot */, minor);
+			} finally {
+				workEnd();
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Adds text to the start of a page on the current wiki.");
+			System.err.println();
+			System.err.println("prepend [<page name>]");
+			System.err.println();
+			System.err.println("The page name is mandatory and will be requested if not provided.");
+			System.err.println("You will be asked to provide the text to add to the start of the page, then an edit summary, then whether your edit is minor.");
 		}
 	}
 
