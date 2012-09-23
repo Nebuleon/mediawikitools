@@ -2700,7 +2700,11 @@ public class WikiShell {
 				}
 			}
 
-			ObjectOutputStream saver = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(new File(new File(System.getProperty("user.home"), ".wikishell-cmds"), presetCommandName + ".wcom"))));
+			File directory = new File(System.getProperty("user.home"), ".wikishell-cmds");
+
+			directory.mkdir();
+
+			ObjectOutputStream saver = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(new File(directory, presetCommandName + ".wcom"))));
 			try {
 				saver.writeUTF(builtinCommandName);
 				saver.writeObject(storedContext);
