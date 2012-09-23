@@ -390,6 +390,7 @@ public class WikiShell {
 			commands.put("count", new CountPages());
 			commands.put("help", new Help());
 			commands.put("commands", new CommandList());
+			commands.put("make", new MakeCommand());
 		} finally {
 			workEnd();
 		}
@@ -455,14 +456,45 @@ public class WikiShell {
 							continue prompt;
 						}
 					} else {
-						System.err.println(tokens[0] + ": No such command");
+						File f = new File(tokens[0] + ".wcom");
+						if (f.exists()) {
+							// Custom Command Detected
+							ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f));
+							String commandName = (String) ois.readUTF();
+							try {
+								CommandContext cc = (CommandContext) ois.readObject();
+								cc.wiki = wiki;
+								System.out.println(cc);
+								if (commands.containsKey(commandName)) {
+									commands.get(commandName).getToken(cc);
+									commands.get(commandName).perform(cc);
+
+								} else {
+									System.err.println("Invalid Custom Command found: " + commandName);
+								}
+							} catch (ClassNotFoundException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							} catch (MediaWikiException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							} catch (ParseException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+							ois.close();
+
+						} else {
+							System.err.println(tokens[0] + ": No such command");
+						}
 					}
 				}
 			}
 		} catch (final CancellationException e) {
 			// we'd go back one level here, but that's not strictly necessary
 		} catch (final NullPointerException e) {
-			System.err.println();
+			// System.err.println();
+			e.printStackTrace();
 		} catch (final IOException e) {
 			e.printStackTrace();
 		} finally {
@@ -2568,6 +2600,60 @@ public class WikiShell {
 			System.err.println();
 			System.err.println("The page name is mandatory and will be requested if not provided.");
 		}
+	}
+
+	public static class MakeCommand extends AbstractCommand {
+
+		@Override
+		public void getEssentialInput(CommandContext context) throws IOException, NullPointerException, CancellationException {
+			// TODO Complete this
+			// TODO
+			// TODO
+		}
+
+		public void perform(CommandContext context) throws IOException, MediaWikiException, ParseException {
+			String[] args = context.arguments.split(" ");
+			if (args.length != 2) {
+				System.err.println("Invalid Arguments. Expected two, got: " + args.length);
+				return;
+			}
+
+			if (commands.containsKey(args[0])) {
+				System.err.println("Cannot override inbuilt commands");
+				return;
+			}
+
+			Command c = commands.get(args[1]);
+			if (c == null) {
+				System.err.println("Invalid Command specified. Cannot find command: " + args[1]);
+				return;
+			}
+			File f = new File(args[0] + ".wcom");
+
+			CommandContext cc = new CommandContext();
+
+			c.getEssentialInput(cc);
+			c.getAuxiliaryInput(cc);
+			c.getPageName(cc);
+
+			ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(f));
+			oos.writeUTF(args[1]);
+			oos.writeObject(cc);
+			oos.flush();
+			oos.close();
+
+		}
+
+		public void help() throws IOException {
+			System.err.println("Creates an alias for a command with preset input");
+			System.err.println();
+			System.err.println("make [<aliasname>] [<command>]");
+			System.err.println("Both aliasname and command are required input, and will be requested if not given");
+			System.err.println("You will be requested to fill out the information required by the command to run without");
+			System.err.println("requested when run in the future");
+
+		}
+
 	}
 
 	public static class NewSection extends AbstractEditTokenCommand {
