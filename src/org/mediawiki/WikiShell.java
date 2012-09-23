@@ -885,8 +885,10 @@ public class WikiShell {
 				lines.add(line.toString());
 			}
 
-			for (File customCommandFile : customCommandFiles) {
-				lines.add(customCommandFile.getName().substring(0, customCommandFile.getName().length() - ".wcom".length()));
+			if (customCommandFiles != null) { // .wikishell-cmds exists
+				for (File customCommandFile : customCommandFiles) {
+					lines.add(customCommandFile.getName().substring(0, customCommandFile.getName().length() - ".wcom".length()));
+				}
 			}
 
 			Collections.sort(lines);
