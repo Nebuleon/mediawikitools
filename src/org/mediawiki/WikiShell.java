@@ -39,7 +39,7 @@ import java.util.regex.PatternSyntaxException;
 import org.mediawiki.MediaWiki.MediaWikiException;
 
 // TODO Add a 'lines' command that outputs 23 lines at a time
-// TODO Add a premade command maker that can automate action reasons etc.
+// TODO Add autoreplace commands for when one knows what happens (also premades)
 // TODO Special page aliases command
 /**
  * A wiki shell that allows a user to perform actions on the wiki using the
