@@ -2515,9 +2515,6 @@ public class WikiShell {
 
 	public static class CategoryMembers extends AbstractPageReadCommand implements IterableCommand {
 		@Override
-		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {}
-
-		@Override
 		public void getAuxiliaryInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
 			if (context.auxiliaryInput != null)
 				return;
