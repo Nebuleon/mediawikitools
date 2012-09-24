@@ -48,4 +48,4 @@ This wiki command-line tool allows you to read pages, get information about many
 
     user@host ~/mediawikitools $ java org.mediawiki.WikiShell [<wiki host or IP>] [<port>]
 
-Documentation for this shell can be found in the shell itself. Invoke the 'commands' command, then use 'help <command name>' to know more about one command.
+Documentation for this shell can be found in the shell itself. Invoke the `commands` command, then use `help <command name>` to know more about one command.
