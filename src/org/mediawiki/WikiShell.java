@@ -14,7 +14,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.URLEncoder;
 import java.text.ParseException;
@@ -39,7 +38,6 @@ import java.util.regex.PatternSyntaxException;
 import org.mediawiki.MediaWiki.MediaWikiException;
 
 // TODO Add a 'lines' command that outputs 23 lines at a time
-// TODO Add autoreplace commands for when one knows what happens (also premades)
 // TODO Special page aliases command
 /**
  * A wiki shell that allows a user to perform actions on the wiki using the
@@ -344,6 +342,11 @@ public class WikiShell {
 				final AllPages a = new AllPages();
 				builtinCommands.put("allpages", a);
 				builtinCommands.put("listpages", a);
+			}
+			{
+				final CategoryMembers c = new CategoryMembers();
+				builtinCommands.put("categorymembers", c);
+				builtinCommands.put("catmembers", c);
 			}
 			{
 				final AllUsers a = new AllUsers();
@@ -2505,6 +2508,177 @@ public class WikiShell {
 			System.err.println("{all | list}pages");
 			System.err.println();
 			System.err.println("The list may be filtered by starting name, prefix, byte count, presence or absence of redirection, presence or absence of interlanguage links and presence or absence of a certain protection, and be displayed in ascending or descending order.");
+			System.err.println();
+			System.err.println("This command can be used as input to the 'for' command.");
+		}
+	}
+
+	public static class CategoryMembers extends AbstractPageReadCommand implements IterableCommand {
+		@Override
+		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {}
+
+		@Override
+		public void getAuxiliaryInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.auxiliaryInput != null)
+				return;
+			if (inputBoolean("Add some filters? [y/N] ", false)) {
+				final String namespaceString = input("members in namespace name or number (<all>): ", null);
+				final String startString = input("start at sort key or time (<first>): ", null);
+				Object start = null;
+				if (startString != null)
+					try {
+						start = MediaWiki.timestampToDate(startString);
+					} catch (ParseException pe) {
+						start = startString;
+					}
+				final String endString = input("end at sort key or time (<last>): ", null);
+				Object end = null;
+				if (endString != null)
+					try {
+						end = MediaWiki.timestampToDate(endString);
+					} catch (ParseException pe) {
+						end = endString;
+					}
+				final boolean ascendingOrder = inputBoolean("ascending or chronological order [Y/n]: ", true);
+
+				context.auxiliaryInput = new Object[] { namespaceString, start, end, ascendingOrder };
+			} else {
+				context.auxiliaryInput = new Object[] { null, null, null, true };
+			}
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+			final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
+			if (namespaces.getNamespaceForPage(context.pageName).getID() != MediaWiki.StandardNamespace.CATEGORY) {
+				context.pageName = namespaces.getNamespace(MediaWiki.StandardNamespace.CATEGORY).getFullPageName(namespaces.removeNamespacePrefix(context.pageName));
+				System.err.println(String.format("Note: Page name changed to %s", context.pageName));
+			}
+
+			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+			long[] namespaceIDs = null;
+			final Object start = auxiliaryInput[1], end = auxiliaryInput[2];
+			final boolean ascendingOrder = (Boolean) auxiliaryInput[3];
+			final String namespaceString = (String) auxiliaryInput[0];
+
+			if (namespaceString != null) {
+				MediaWiki.Namespace namespace;
+				try {
+					namespace = namespaces.getNamespace(Long.parseLong(namespaceString));
+				} catch (final NumberFormatException nfe) {
+					namespace = namespaces.getNamespace(namespaceString);
+				}
+				if (namespace != null) {
+					namespaceIDs = new long[] { namespace.getID() };
+				} else {
+					System.err.println(namespaceString + ": No such namespace");
+					throw new CancellationException();
+				}
+			}
+
+			final Iterator<MediaWiki.CategoryMember> ci;
+
+			work("Getting pages...");
+			try {
+				if (((start == null) && (end == null)) || ((start instanceof String) && (end == null)) || ((start == null) && (end instanceof String)) || ((start instanceof String) && (end instanceof String))) {
+					ci = context.wiki.getCategoryMembers(context.pageName, ascendingOrder, (String) start, (String) end, namespaceIDs);
+				} else if (((start instanceof Date) && (end == null)) || ((start == null) && (end instanceof Date)) || ((start instanceof Date) && (end instanceof Date))) {
+					ci = context.wiki.getCategoryMembers(context.pageName, ascendingOrder, (Date) start, (Date) end, namespaceIDs);
+				} else {
+					System.err.println("Incorrect combination of revision IDs and timestamps");
+					throw new CancellationException();
+				}
+			} finally {
+				workEnd();
+			}
+
+			byte i = 0;
+
+			MediaWiki.CategoryMember c;
+			while ((c = next(ci, "Getting pages...")) != null) {
+				System.out.println(String.format("   %s", c.getFullPageName()));
+				System.out.println(String.format("as %-55s %s", c.getSortKey(), MediaWiki.dateToISO8601(c.getAdditionTime())));
+				i = (byte) ((i + 1) % 12);
+				if ((i == 0) && (input("Press Enter to continue the list, or q Enter to stop it: ").length() > 0)) {
+					break;
+				}
+			}
+		}
+
+		public Iterator<String> iterator(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+			final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
+			if (namespaces.getNamespaceForPage(context.pageName).getID() != MediaWiki.StandardNamespace.CATEGORY) {
+				context.pageName = namespaces.getNamespace(MediaWiki.StandardNamespace.CATEGORY).getFullPageName(namespaces.removeNamespacePrefix(context.pageName));
+				System.err.println(String.format("Note: Page name changed to %s", context.pageName));
+			}
+
+			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+			long namespaceID;
+			final Object start = auxiliaryInput[1], end = auxiliaryInput[2];
+			final boolean ascendingOrder = (Boolean) auxiliaryInput[3];
+
+			{
+				final String namespaceString = (String) auxiliaryInput[0];
+				MediaWiki.Namespace namespace;
+				try {
+					namespace = namespaces.getNamespace(Long.parseLong(namespaceString));
+				} catch (final NumberFormatException nfe) {
+					namespace = namespaces.getNamespace(namespaceString);
+				}
+				if (namespace != null) {
+					namespaceID = namespace.getID();
+				} else {
+					System.err.println(namespaceString + ": No such namespace");
+					throw new CancellationException();
+				}
+			}
+
+			final Iterator<MediaWiki.CategoryMember> ci;
+
+			work("Getting pages...");
+			try {
+				if (((start == null) && (end == null)) || ((start instanceof String) && (end == null)) || ((start == null) && (end instanceof String)) || ((start instanceof String) && (end instanceof String))) {
+					ci = context.wiki.getCategoryMembers(context.pageName, ascendingOrder, (String) start, (String) end, namespaceID);
+				} else if (((start instanceof Date) && (end == null)) || ((start == null) && (end instanceof Date)) || ((start instanceof Date) && (end instanceof Date))) {
+					ci = context.wiki.getCategoryMembers(context.pageName, ascendingOrder, (Date) start, (Date) end, namespaceID);
+				} else {
+					System.err.println("Incorrect combination of revision IDs and timestamps");
+					throw new CancellationException();
+				}
+			} finally {
+				workEnd();
+			}
+
+			return new Itr(ci);
+		}
+
+		public static class Itr implements Iterator<String> {
+			final Iterator<MediaWiki.CategoryMember> ci;
+
+			public Itr(final Iterator<MediaWiki.CategoryMember> ci) {
+				this.ci = ci;
+			}
+
+			public boolean hasNext() {
+				return ci.hasNext();
+			}
+
+			public String next() {
+				final MediaWiki.CategoryMember c = ci.next();
+				return c != null ? c.getFullPageName() : null;
+			}
+
+			public void remove() {
+				ci.remove();
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Displays the pages in the given category on the current wiki.");
+			System.err.println();
+			System.err.println("cat[egory]members [<category name>]");
+			System.err.println();
+			System.err.println("The category name is mandatory and will be requested if not provided. The Category namespace is implied.");
+			System.err.println("The list may be filtered by range (starting and ending sort key or starting and ending timestamp of categorisation), and be displayed in ascending or descending order.");
 			System.err.println();
 			System.err.println("This command can be used as input to the 'for' command.");
 		}

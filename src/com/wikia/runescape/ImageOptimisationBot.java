@@ -31,7 +31,7 @@ public class ImageOptimisationBot {
 
 	/**
 	 * @param args
-	 *        unused
+	 *            unused
 	 */
 	public static void main(final String[] args) {
 		// Read the bot's configuration file.
@@ -296,9 +296,9 @@ public class ImageOptimisationBot {
 		 * has been seen by the bot.
 		 * 
 		 * @param wiki
-		 *        The wiki to cache the file's last revision data for.
+		 *            The wiki to cache the file's last revision data for.
 		 * @param fileNamespaceAndName
-		 *        The full name, including the namespace, of the file.
+		 *            The full name, including the namespace, of the file.
 		 * @return [0] the date, as a <code>java.util.Date</code><br />
 		 *         [1] the SHA-1 hash, as a <code>byte[]</code>
 		 */
@@ -397,21 +397,23 @@ public class ImageOptimisationBot {
 	 * certain wiki.
 	 * 
 	 * @param wiki
-	 *        The wiki to work on.
+	 *            The wiki to work on.
 	 * @param settings
-	 *        The settings to use for the optimisation.
+	 *            The settings to use for the optimisation.
 	 * @param fileFullName
-	 *        The name of the page, including its namespace, to optimise.
+	 *            The name of the page, including its namespace, to optimise.
 	 * @param editReasonFormat
-	 *        The edit reason to use for the upload. %c%s (or %C%s, to uppercase
-	 *        the first letter) in this string is replaced by either
-	 *        <code>"PNG recompression and de-interlacing"</code>,
-	 *        <code>"PNG recompression"</code> or <code>"deinterlacing"</code>.
+	 *            The edit reason to use for the upload. %c%s (or %C%s, to
+	 *            uppercase the first letter) in this string is replaced by
+	 *            either <code>"PNG recompression and de-interlacing"</code>,
+	 *            <code>"PNG recompression"</code> or
+	 *            <code>"deinterlacing"</code>.
 	 * @throws MediaWiki.MediaWikiException
-	 *         if an API error occurs while reading from, or writing to, the
-	 *         wiki
+	 *             if an API error occurs while reading from, or writing to, the
+	 *             wiki
 	 * @throws IOException
-	 *         if an error occurs while reading from, or writing to, the wiki
+	 *             if an error occurs while reading from, or writing to, the
+	 *             wiki
 	 */
 	private static void optimize(final MediaWiki wiki, final Settings settings, final String fileFullName, final String editReasonFormat) throws MediaWiki.MediaWikiException, IOException {
 		if (Pattern.compile(settings.getProperty("BlockedFileRegex", "^$" /*- block nothing if the value is not there */)).matcher(fileFullName).find()) {
@@ -831,14 +833,14 @@ public class ImageOptimisationBot {
 		 * header of <code>headerSize</code> bytes.
 		 * 
 		 * @param inner
-		 *        The source of bytes for the newly-created
-		 *        <tt>HeaderInputStream</tt>.
+		 *            The source of bytes for the newly-created
+		 *            <tt>HeaderInputStream</tt>.
 		 * @param headerSize
-		 *        The size of the header to be preserved by the newly-created
-		 *        <tt>HeaderInputStream</tt>.
+		 *            The size of the header to be preserved by the
+		 *            newly-created <tt>HeaderInputStream</tt>.
 		 * @throws IOException
-		 *         if reading in enough bytes to fill the header throws
-		 *         <tt>IOException</tt>
+		 *             if reading in enough bytes to fill the header throws
+		 *             <tt>IOException</tt>
 		 */
 		public HeaderInputStream(InputStream inner, int headerSize) throws IOException {
 			this.inner = inner;
@@ -906,7 +908,7 @@ public class ImageOptimisationBot {
 		 * Returns the first <code>n</code> preserved header bytes.
 		 * 
 		 * @param n
-		 *        The number of bytes to retrieve.
+		 *            The number of bytes to retrieve.
 		 * @return the bytes requested
 		 */
 		public byte[] getHeader(int n) {

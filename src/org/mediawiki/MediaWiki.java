@@ -1705,6 +1705,197 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
+	// - - - CATEGORY MEMBERS (LIST=CATEGORYMEMBERS) - - -
+
+	/**
+	 * Retrieves information about the members of a category, specified by its
+	 * title. The return value is an iterator which will return information
+	 * about each matching page that is a member of the category when its
+	 * <code>next</code> method is called. The iterator's methods behave as
+	 * follows:
+	 * <ul>
+	 * <li>the <code>hasNext</code> method may throw
+	 * <tt>MediaWiki.IterationException</tt>, an unchecked exception, if it
+	 * encounters an error;
+	 * <li>the <code>hasNext</code> method always returns <code>false</code> if
+	 * the category is missing, or if the category has no members.
+	 * </ul>
+	 * 
+	 * @param title
+	 *            The full name of the category to be examined.
+	 * @param chronologicalOrder
+	 *            Whether the pages are listed in chronological order (
+	 *            <code>true</code>) of being added to the category, or in
+	 *            reverse chronological order (<code>false</code>).
+	 * @param start
+	 *            The timestamp at which to start enumerating additions to the
+	 *            category. Milliseconds are not used. Any pages added on the
+	 *            second specified by it are included. May be <code>null</code>
+	 *            to use only the <code>end</code> bound.
+	 * @param end
+	 *            The timestamp at which to stop enumerating additions to the
+	 *            category. Milliseconds are not used. Any pages added on the
+	 *            second specified by it are included. May be <code>null</code>
+	 *            to use only the <code>start</code> bound.
+	 * @return an iterator which will return information about each matching
+	 *         page that is a member of the given category when its
+	 *         <code>next</code> method is called
+	 */
+	public Iterator<MediaWiki.CategoryMember> getCategoryMembers(final String title, final boolean chronologicalOrder, final Date start, final Date end, final long... namespaces) {
+		return new MediaWiki.CategoryMemberIterator(title, chronologicalOrder, start, end, namespaces);
+	}
+
+	/**
+	 * Retrieves information about the members of a category, specified by its
+	 * title. The return value is an iterator which will return information
+	 * about each matching page that is a member of the category when its
+	 * <code>next</code> method is called. The iterator's methods behave as
+	 * follows:
+	 * <ul>
+	 * <li>the <code>hasNext</code> method may throw
+	 * <tt>MediaWiki.IterationException</tt>, an unchecked exception, if it
+	 * encounters an error;
+	 * <li>the <code>hasNext</code> method always returns <code>false</code> if
+	 * the category is missing, or if the category has no members.
+	 * </ul>
+	 * 
+	 * @param title
+	 *            The full name of the category to be examined.
+	 * @param ascendingOrder
+	 *            Whether the pages are listed in ascending order (
+	 *            <code>true</code>), or in descending order (<code>false</code>
+	 *            ) according to the category's sort key.
+	 * @param start
+	 *            The sort key at which to start enumerating pages in the
+	 *            category. A page having this exact sort key is included in the
+	 *            result. May be <code>null</code> to use only the
+	 *            <code>end</code> bound.
+	 * @param end
+	 *            The sort key at which to stop enumerating pages in the
+	 *            category. A page having this exact sort key is excluded from
+	 *            the result. May be <code>null</code> to use only the
+	 *            <code>start</code> bound.
+	 * @return an iterator which will return information about each matching
+	 *         page that is a member of the given category when its
+	 *         <code>next</code> method is called
+	 */
+	public Iterator<MediaWiki.CategoryMember> getCategoryMembers(final String title, final boolean ascendingOrder, final String start, final String end, final long... namespaces) {
+		return new MediaWiki.CategoryMemberIterator(title, ascendingOrder, start, end, namespaces);
+	}
+
+	private class CategoryMemberIterator extends AbstractContinuableQueryIterator<MediaWiki.CategoryMember> {
+		private final Map<String, String> getParams;
+
+		CategoryMemberIterator(final String element, final boolean ascendingOrder, final Object start, final Object end, final long... namespaces) {
+			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "categorymembers", "cmtitle", titleToAPIForm(element), "cmprop", "ids|title|sortkeyprefix|timestamp", "cmlimit", "max");
+			Integer maxLag = getMaxLag();
+			if (maxLag != null)
+				getParams.put("maxlag", maxLag.toString());
+
+			if ((start == null && end == null) || (start instanceof String) || (end instanceof String))
+				getParams.put("cmsort", "sortkey");
+			else if (start instanceof Date || end instanceof Date)
+				getParams.put("cmsort", "timestamp");
+			getParams.put("cmdir", ascendingOrder ? "asc" : "desc");
+			// If the order is descending, we need to reverse start and end.
+			String startValue = start != null ? (start instanceof Date ? dateToISO8601((Date) start) : (String) start) : null;
+			String endValue = end != null ? (end instanceof Date ? dateToISO8601((Date) end) : (String) end) : null;
+			if (ascendingOrder) {
+				if (start != null)
+					getParams.put(start instanceof Date ? "cmstart" : "cmstartsortkeyprefix", startValue);
+				if (end != null)
+					getParams.put(end instanceof Date ? "cmend" : "cmendsortkeyprefix", endValue);
+			} else {
+				if (start != null)
+					getParams.put(start instanceof Date ? "cmend" : "cmendsortkeyprefix", startValue);
+				if (end != null)
+					getParams.put(end instanceof Date ? "cmstart" : "cmstartsortkeyprefix", endValue);
+			}
+
+			if (namespaces != null && namespaces.length > 0) {
+				StringBuilder cmnamespace = new StringBuilder(namespaces.length * 4);
+				cmnamespace.append(namespaces[0]);
+				for (int i = 1; i < namespaces.length; i++) {
+					cmnamespace.append('|').append(namespaces[i]);
+				}
+				getParams.put("cmnamespace", cmnamespace.toString());
+			}
+		}
+
+		public synchronized boolean hasNext() throws MediaWiki.IterationException {
+			cacheUpcoming();
+			return getIndex() + 1 < getUpcoming().size();
+		}
+
+		public synchronized MediaWiki.CategoryMember next() throws MediaWiki.IterationException {
+			cacheUpcoming();
+
+			try {
+				int i = getIndex() + 1;
+				setIndex(i);
+				final Element tag = getUpcoming().get(i);
+
+				final String title = tag.getAttribute("title");
+				final long pageID = Long.parseLong(tag.getAttribute("pageid"));
+				final String sortKey = tag.getAttribute("sortkeyprefix");
+				final Date addTime = timestampToDate(tag.getAttribute("timestamp"));
+
+				return new MediaWiki.CategoryMember(pageID, addTime, title, sortKey);
+			} catch (ParseException e) {
+				throw new MediaWiki.IterationException(e);
+			} finally {
+				if (getIndex() + 1 >= getUpcoming().size())
+					setUpcoming((NodeList) null); // next call will fill it
+			}
+		}
+
+		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
+			if (getUpcoming() == null) {
+				setUpcoming(Collections.<Element> emptyList());
+				if (isDone())
+					return;
+				// Get the next page of categories from the API.
+				// The query continue value from the previous call will be in
+				// start, if applicable.
+				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+				if (getContinuation() != null) {
+					// The start parameter is for only this get.
+					pageGetParams.put("ccontinue", getContinuation());
+				}
+
+				final String url = createApiGetUrl(pageGetParams);
+
+				networkLock.lock();
+				try {
+					final InputStream in = get(url);
+					Document xml = parse(in);
+					checkError(xml);
+
+					final NodeList categorymembersTags = xml.getElementsByTagName("categorymembers");
+
+					if (categorymembersTags.getLength() > 0) {
+						final Element categorymembersTag = (Element) categorymembersTags.item(0);
+
+						setUpcoming(categorymembersTag.getElementsByTagName("cm"));
+					}
+
+					processContinuation(xml, "categorymembers", "cmcontinue");
+				} catch (final IOException ioe) {
+					setUpcoming((NodeList) null);
+					throw new MediaWiki.IterationException(ioe);
+				} catch (MediaWiki.IterationException ie) {
+					setUpcoming((NodeList) null);
+					throw ie;
+				} catch (MediaWiki.MediaWikiException mwe) {
+					setUpcoming((NodeList) null);
+					throw new MediaWiki.IterationException(mwe);
+				} finally {
+					networkLock.unlock();
+				}
+			}
+		}
+	}
+
 	// - - - IMAGE INFORMATION (PROP=IMAGEINFO) - - -
 
 	/**
@@ -6276,6 +6467,86 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		@Override
 		public String toString() {
 			return String.format("CategoryMembership[\"%s\" as \"%s\"]", category, sortKey);
+		}
+	}
+
+	public class CategoryMember {
+		private final long pageID;
+
+		private final String fullPageName;
+
+		private final String sortKey;
+
+		private final Date addTime;
+
+		CategoryMember(final long pageID, final Date addTime, final String fullPageName, final String sortKey) {
+			this.pageID = pageID;
+			this.addTime = addTime;
+			this.fullPageName = fullPageName;
+			this.sortKey = sortKey;
+		}
+
+		/**
+		 * Returns the ID of the page designated by this <tt>CategoryMember</tt>
+		 * .
+		 * 
+		 * @return the ID of the page designated by this <tt>CategoryMember</tt>
+		 */
+		public long getPageID() {
+			return pageID;
+		}
+
+		/**
+		 * Returns the full name of this page, which is a member of a certain
+		 * category.
+		 * 
+		 * @return the full name of this page, which is a member of a certain
+		 *         category
+		 */
+		public String getFullPageName() {
+			return fullPageName;
+		}
+
+		/**
+		 * Returns the base name of this page, which is a member of a certain
+		 * category; that is, the page name without its namespace prefix.
+		 * 
+		 * @return the base name of this page, which is a member of a certain
+		 *         category
+		 * @throws IOException
+		 *             if an error occurs while getting the list of namespaces
+		 *             on the wiki represented by the enclosing
+		 *             <tt>MediaWiki</tt>
+		 */
+		public String getBasePageName() throws IOException {
+			return getNamespaces().removeNamespacePrefix(fullPageName);
+		}
+
+		/**
+		 * Returns the name of the page as it is used to sort it inside the
+		 * category's members.
+		 * 
+		 * @return the name of the page as it is used to sort it inside the
+		 *         category's members
+		 */
+		public String getSortKey() {
+			return sortKey;
+		}
+
+		/**
+		 * Returns the time when this page was added to the category of which it
+		 * is a member.
+		 * 
+		 * @return the time when this page was added to the category of which it
+		 *         is a member
+		 */
+		public Date getAdditionTime() {
+			return addTime;
+		}
+
+		@Override
+		public String toString() {
+			return String.format("CategoryMember[\"%s\" (ID %d) as \"%s\", added %s]", fullPageName, pageID, sortKey, addTime);
 		}
 	}
 
