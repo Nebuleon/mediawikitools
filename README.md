@@ -46,6 +46,6 @@ Documentation for this bot can be found [here](http://runescape.wikia.com/wiki/U
 
 This wiki command-line tool allows you to read pages, get information about many types of objects (users, pages, categories and so on) and read page histories, as well as edit, create, protect, move and delete pages, assign user rights, and more. You can run this as follows:
 
-    user@host ~/mediawikitools $ java org.mediawiki.WikiShell [<wiki host or IP>] [<port>]
+    user@host ~/mediawikitools $ java org.mediawiki.WikiShell [<wiki host or IP>] [<script path>]
 
 Documentation for this shell can be found in the shell itself. Invoke the `commands` command, then use `help <command name>` to know more about one command.
