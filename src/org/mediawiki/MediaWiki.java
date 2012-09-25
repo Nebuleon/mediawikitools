@@ -7147,7 +7147,11 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				} catch (Exception e) {
 					throw new MediaWiki.IterationException(e);
 				}
-				return getIndex() + 1 < getUpcoming().size();
+				if (getUpcoming() == null) {
+					done = true;
+					return false;
+				} else
+					return getIndex() + 1 < getUpcoming().size();
 			} else
 				return false;
 		}
@@ -7175,6 +7179,10 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					} catch (Exception e) {
 						throw new MediaWiki.IterationException(e);
 					}
+				if (getUpcoming() == null) {
+					done = true;
+					throw new NoSuchElementException();
+				}
 				int index = getIndex() + 1;
 				setIndex(index);
 				Element element = getUpcoming().get(index);
