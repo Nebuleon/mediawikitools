@@ -2281,7 +2281,7 @@ public class WikiShell {
 
 			public String next() {
 				final MediaWiki.Category c = ci.next();
-				return c != null ? c.getFullName() : null;
+				return c != null ? c.getFullPageName() : null;
 			}
 
 			public void remove() {

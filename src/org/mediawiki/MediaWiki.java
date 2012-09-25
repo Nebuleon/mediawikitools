@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.TreeMap;
@@ -61,14 +62,14 @@ import org.xml.sax.SAXException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class MediaWiki implements Serializable, ObjectInputValidation {
-	// TODO Add categorymembers by page title
-	// TODO Add purge
+	// TODO Remove badrevids checking from most classes that don't need it
 	// TODO Add parse-wikitext and parse-pagetext
 	// TODO Add block/unblock
 	// TODO Add undelete
 	// TODO Add watch-add/watch-del/watch-list/watch-newedits
-	// TODO Add patrol
 	// TODO Add Special:Recentchanges, Special:Contributions
+	// TODO Add patrol
+	// TODO Add setSecure
 
 	private static final long serialVersionUID = 1L;
 
@@ -80,7 +81,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * other class files that refer to the value, therefore the literal is
 	 * wrapped in a <code>new String</code> to avoid this.
 	 */
-	public static final String VERSION = new String("0.01");
+	public static final String VERSION = new String("0.02");
 
 	// - - - VARIABLES - - -
 
@@ -402,7 +403,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		final Map<String, String> postParams = paramValuesToMap("lgname", user, "lgpassword", new String(password));
 		if (domain != null) {
-			if (password.length == 0)
+			if (domain.length() == 0)
 				throw new IllegalArgumentException("domain is empty");
 			postParams.put("lgdomain", domain);
 		}
@@ -923,9 +924,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			this.elements = elements;
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "info", "inprop", "protection");
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 
 			i = -1;
 		}
@@ -1128,9 +1126,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			this.elements = elements;
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "revisions", "rvprop", "ids|flags|timestamp|user|comment|size");
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 
 			if (getContentImmediately) {
 				getParams.put("rvprop", getParams.get("rvprop") + "|content");
@@ -1262,12 +1257,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * @param title
 	 *            The full name of the page to return information about matching
 	 *            revisions of.
-	 * @param start
+	 * @param earliest
 	 *            The timestamp at which to start enumerating revisions.
 	 *            Milliseconds are not used. Any revisions made on the second
 	 *            specified by it are included. May be <code>null</code> to use
 	 *            only the <code>end</code> bound.
-	 * @param end
+	 * @param latest
 	 *            The timestamp at which to stop enumerating revisions.
 	 *            Milliseconds are not used. Any revisions made on the second
 	 *            specified by it are included. May be <code>null</code> to use
@@ -1276,8 +1271,8 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         revision of the page in order from oldest to newest when its
 	 *         <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.Revision> getRevisions(final String title, final Date start, final Date end) {
-		return getRevisions(false, title, start, end);
+	public Iterator<MediaWiki.Revision> getRevisions(final String title, final Date earliest, final Date latest) {
+		return getRevisions(false, title, earliest, latest);
 	}
 
 	/**
@@ -1299,12 +1294,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * @param title
 	 *            The full name of the page to return information about matching
 	 *            revisions of.
-	 * @param startID
+	 * @param earliestID
 	 *            The revision ID at which to start enumerating revisions. If
 	 *            one of the page's revisions has this ID, it is included as
 	 *            well. May be <code>null</code> to use only the
 	 *            <code>end</code> bound.
-	 * @param endID
+	 * @param latestID
 	 *            The revision ID at which to stop enumerating revisions. If one
 	 *            of the page's revisions has this ID, it is included as well.
 	 *            May be <code>null</code> to use only the <code>start</code>
@@ -1313,8 +1308,8 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         revision of the page in order from oldest to newest when its
 	 *         <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.Revision> getRevisions(final String title, final Long startID, final Long endID) {
-		return getRevisions(false, title, startID, endID);
+	public Iterator<MediaWiki.Revision> getRevisions(final String title, final Long earliestID, final Long latestID) {
+		return getRevisions(false, title, earliestID, latestID);
 	}
 
 	/**
@@ -1371,12 +1366,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * @param title
 	 *            The full name of the page to return information about matching
 	 *            revisions of.
-	 * @param start
+	 * @param earliest
 	 *            The timestamp at which to start enumerating revisions.
 	 *            Milliseconds are not used. Any revisions made on the second
 	 *            specified by it are included. May be <code>null</code> to use
 	 *            only the <code>end</code> bound.
-	 * @param end
+	 * @param latest
 	 *            The timestamp at which to stop enumerating revisions.
 	 *            Milliseconds are not used. Any revisions made on the second
 	 *            specified by it are included. May be <code>null</code> to use
@@ -1385,8 +1380,8 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         revision of the page in order from oldest to newest when its
 	 *         <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.Revision> getRevisions(final boolean getContentImmediately, final String title, final Date start, final Date end) {
-		return new MediaWiki.MultipleRevisionIterator(title, "rvstart", start, "rvend", end, getContentImmediately);
+	public Iterator<MediaWiki.Revision> getRevisions(final boolean getContentImmediately, final String title, final Date earliest, final Date latest) {
+		return new MediaWiki.MultipleRevisionIterator(title, "rvstart", earliest, "rvend", latest, getContentImmediately);
 	}
 
 	/**
@@ -1414,12 +1409,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * @param title
 	 *            The full name of the page to return information about matching
 	 *            revisions of.
-	 * @param startID
+	 * @param earliestID
 	 *            The revision ID at which to start enumerating revisions. If
 	 *            one of the page's revisions has this ID, it is included as
 	 *            well. May be <code>null</code> to use only the
 	 *            <code>end</code> bound.
-	 * @param endID
+	 * @param latestID
 	 *            The revision ID at which to stop enumerating revisions. If one
 	 *            of the page's revisions has this ID, it is included as well.
 	 *            May be <code>null</code> to use only the <code>start</code>
@@ -1428,39 +1423,40 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         revision of the page in order from oldest to newest when its
 	 *         <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.Revision> getRevisions(final boolean getContentImmediately, final String title, final Long startID, final Long endID) {
-		return new MediaWiki.MultipleRevisionIterator(title, "rvstartid", startID, "rvendid", endID, getContentImmediately);
+	public Iterator<MediaWiki.Revision> getRevisions(final boolean getContentImmediately, final String title, final Long earliestID, final Long latestID) {
+		return new MediaWiki.MultipleRevisionIterator(title, "rvstartid", earliestID, "rvendid", latestID, getContentImmediately);
 	}
 
-	private class MultipleRevisionIterator extends AbstractBufferingIterator<MediaWiki.Revision> {
+	private class MultipleRevisionIterator extends AbstractContinuableQueryIterator<MediaWiki.Revision> {
 		/**
 		 * The type of the element given for the lower bound. This is either
 		 * "rvstart" or "rvstartid", corresponding to the parameter names
 		 * acceptable for prop=revisions enumeration.
 		 */
-		private String startType;
+		private String earliestType;
 
 		/**
 		 * The element given for the lower bound. The type of this field is
 		 * either Date or Long, and may be <code>null</code> if the start
 		 * parameter is to be omitted.
+		 * <p>
+		 * This field is not in the continuation, despite the use of
+		 * <tt>AbstractContinuableQueryIterator</tt>, because its type can
+		 * change.
 		 */
-		private Object start;
+		private Object earliest;
 
 		private final boolean getContentImmediately;
 
 		private final Map<String, String> getParams;
 
-		MultipleRevisionIterator(final String element, final String startType, final Object start, final String endType, final Object end, final boolean getContentImmediately) {
+		MultipleRevisionIterator(final String element, final String earliestType, final Object earliest, final String latestType, final Object latest, final boolean getContentImmediately) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "revisions", "titles", titleToAPIForm(element), "rvprop", "ids|flags|timestamp|user|comment|size", "rvdir", "newer", "rvlimit", "max");
-			this.startType = startType;
-			this.start = start;
-			if (end != null) {
-				getParams.put(endType, end.toString());
+			this.earliestType = earliestType;
+			this.earliest = earliest;
+			if (latest != null) {
+				getParams.put(latestType, latest.toString());
 			}
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 
 			if (getContentImmediately) {
 				getParams.put("rvprop", getParams.get("rvprop") + "|content");
@@ -1469,127 +1465,95 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			this.getContentImmediately = getContentImmediately;
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
-		}
+		public MediaWiki.Revision convert(Element tag) throws Exception {
+			final long revisionID = Long.parseLong(tag.getAttribute("revid"));
+			final long parentID = tag.hasAttribute("parentid") ? Long.parseLong(tag.getAttribute("parentid")) : -1;
 
-		public synchronized MediaWiki.Revision next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+			final Date timestamp = iso8601TimestampParser.parse(tag.getAttribute("timestamp"));
 
-			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element tag = getUpcoming().get(i);
+			final boolean userHidden = tag.hasAttribute("userhidden");
+			final String userName = userHidden ? null : tag.getAttribute("user");
 
-				final long revisionID = Long.parseLong(tag.getAttribute("revid"));
-				final long parentID = tag.hasAttribute("parentid") ? Long.parseLong(tag.getAttribute("parentid")) : -1;
+			final boolean commentHidden = tag.hasAttribute("commenthidden");
+			final String comment = commentHidden ? null : tag.getAttribute("comment");
 
-				final Date timestamp = iso8601TimestampParser.parse(tag.getAttribute("timestamp"));
+			final boolean isMinor = tag.hasAttribute("minor");
+			final boolean isAnonymous = tag.hasAttribute("anon");
 
-				final boolean userHidden = tag.hasAttribute("userhidden");
-				final String userName = userHidden ? null : tag.getAttribute("user");
+			final long length = tag.hasAttribute("size") ? Long.parseLong(tag.getAttribute("size")) : 0;
 
-				final boolean commentHidden = tag.hasAttribute("commenthidden");
-				final String comment = commentHidden ? null : tag.getAttribute("comment");
+			MediaWiki.Revision result = new MediaWiki.Revision(revisionID, parentID, timestamp, userName, userHidden, length, comment, commentHidden, isMinor, isAnonymous);
 
-				final boolean isMinor = tag.hasAttribute("minor");
-				final boolean isAnonymous = tag.hasAttribute("anon");
-
-				final long length = tag.hasAttribute("size") ? Long.parseLong(tag.getAttribute("size")) : 0;
-
-				MediaWiki.Revision result = new MediaWiki.Revision(revisionID, parentID, timestamp, userName, userHidden, length, comment, commentHidden, isMinor, isAnonymous);
-
-				if (getContentImmediately) {
-					if (tag.hasAttribute("contenthidden"))
-						result.contentHidden = true;
-					else
-						result.content = tag.getTextContent();
-					result.contentStored = true;
-				}
-
-				return result;
-			} catch (final ParseException pe) {
-				throw new MediaWiki.IterationException(pe);
-			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null);
+			if (getContentImmediately) {
+				if (tag.hasAttribute("contenthidden"))
+					result.contentHidden = true;
+				else
+					result.content = tag.getTextContent();
+				result.contentStored = true;
 			}
+
+			return result;
 		}
 
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (startType.equals("done"))
-					return;
-				// Get the next page of revisions from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (start != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put(startType, start instanceof Date ? dateToTimestamp((Date) start) : start.toString());
-				}
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of revisions from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			if (earliest != null) {
+				// The start parameter is for only this get.
+				pageGetParams.put(earliestType, earliest instanceof Date ? dateToTimestamp((Date) earliest) : earliest.toString());
+			}
 
-				final String url = createApiGetUrl(pageGetParams);
+			final String url = createApiGetUrl(pageGetParams);
 
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
+			networkLock.lock();
+			try {
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-					final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-					if (badrevidsTags.getLength() == 0) {
-						final NodeList pageTags = xml.getElementsByTagName("page");
+				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
+				if (badrevidsTags.getLength() == 0) {
+					final NodeList pageTags = xml.getElementsByTagName("page");
 
-						if (pageTags.getLength() > 0) {
-							final Element pageTag = (Element) pageTags.item(0);
+					if (pageTags.getLength() > 0) {
+						final Element pageTag = (Element) pageTags.item(0);
 
-							if (!pageTag.hasAttribute("missing")) {
-								setUpcoming(pageTag.getElementsByTagName("rev"));
-							}
+						if (!pageTag.hasAttribute("missing")) {
+							setUpcoming(pageTag.getElementsByTagName("rev"));
 						}
 					}
+				}
 
-					/*
-					 * Honor query-continue: start at the next named ID. If
-					 * there's no query-continue, the iteration is done. Put the
-					 * special value "done" in startType so that the next call
-					 * doesn't continue the iteration.
-					 */
-					final NodeList queryContinueTags = xml.getElementsByTagName("query-continue");
+				/*
+				 * Honor query-continue: start at the next named ID. If there's
+				 * no query-continue, the iteration is done. Put the special
+				 * value "done" in earliestType so that the next call doesn't
+				 * continue the iteration.
+				 */
+				final NodeList queryContinueTags = xml.getElementsByTagName("query-continue");
 
-					if (queryContinueTags.getLength() > 0) {
-						final Element queryContinueTag = (Element) queryContinueTags.item(0);
+				if (queryContinueTags.getLength() > 0) {
+					final Element queryContinueTag = (Element) queryContinueTags.item(0);
 
-						final NodeList revisionsTags = queryContinueTag.getElementsByTagName("revisions");
+					final NodeList revisionsTags = queryContinueTag.getElementsByTagName("revisions");
 
-						if (revisionsTags.getLength() > 0) {
-							final Element revisionsTag = (Element) revisionsTags.item(0);
+					if (revisionsTags.getLength() > 0) {
+						final Element revisionsTag = (Element) revisionsTags.item(0);
 
-							// Whatever the initial start type was, it's now
-							// by ID.
-							startType = "rvstartid";
-							start = Long.valueOf(revisionsTag.getAttribute("rvstartid"));
-						} else {
-							startType = "done";
-						}
+						// Whatever the initial start type was, it's now
+						// by ID.
+						earliestType = "rvstartid";
+						earliest = Long.valueOf(revisionsTag.getAttribute("rvstartid"));
 					} else {
-						startType = "done";
+						earliestType = "done";
 					}
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
+				} else {
+					earliestType = "done";
 				}
+			} finally {
+				networkLock.unlock();
 			}
 		}
 	}
@@ -1625,82 +1589,46 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		CategoryIterator(final String element) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "categories", "titles", titleToAPIForm(element), "clprop", "sortkey", "cllimit", "max");
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.CategoryMembership convert(Element element) throws Exception {
+			final String category = element.getAttribute("title");
+			final String sortKey = element.getAttribute("sortkeyprefix");
+
+			return new MediaWiki.CategoryMembership(category, sortKey);
 		}
 
-		public synchronized MediaWiki.CategoryMembership next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of categories from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("clcontinue", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element tag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final String category = tag.getAttribute("title");
-				final String sortKey = tag.getAttribute("sortkeyprefix");
+				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
+				if (badrevidsTags.getLength() == 0) {
+					final NodeList pageTags = xml.getElementsByTagName("page");
 
-				return new MediaWiki.CategoryMembership(category, sortKey);
-			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // next call will fill it
-			}
-		}
+					if (pageTags.getLength() > 0) {
+						final Element pageTag = (Element) pageTags.item(0);
 
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of categories from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("clcontinue", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-					if (badrevidsTags.getLength() == 0) {
-						final NodeList pageTags = xml.getElementsByTagName("page");
-
-						if (pageTags.getLength() > 0) {
-							final Element pageTag = (Element) pageTags.item(0);
-
-							if (!pageTag.hasAttribute("missing")) {
-								setUpcoming(pageTag.getElementsByTagName("cl"));
-							}
+						if (!pageTag.hasAttribute("missing")) {
+							setUpcoming(pageTag.getElementsByTagName("cl"));
 						}
 					}
-
-					processContinuation(xml, "categories", "clcontinue");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
 				}
+
+				processContinuation(xml, "categories", "clcontinue");
+			} finally {
+				networkLock.unlock();
 			}
 		}
 	}
@@ -1727,12 +1655,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *            Whether the pages are listed in chronological order (
 	 *            <code>true</code>) of being added to the category, or in
 	 *            reverse chronological order (<code>false</code>).
-	 * @param start
+	 * @param earliest
 	 *            The timestamp at which to start enumerating additions to the
 	 *            category. Milliseconds are not used. Any pages added on the
 	 *            second specified by it are included. May be <code>null</code>
 	 *            to use only the <code>end</code> bound.
-	 * @param end
+	 * @param latest
 	 *            The timestamp at which to stop enumerating additions to the
 	 *            category. Milliseconds are not used. Any pages added on the
 	 *            second specified by it are included. May be <code>null</code>
@@ -1741,8 +1669,8 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         page that is a member of the given category when its
 	 *         <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.CategoryMember> getCategoryMembers(final String title, final boolean chronologicalOrder, final Date start, final Date end, final long... namespaces) {
-		return new MediaWiki.CategoryMemberIterator(title, chronologicalOrder, start, end, namespaces);
+	public Iterator<MediaWiki.CategoryMember> getCategoryMembers(final String title, final boolean chronologicalOrder, final Date earliest, final Date latest, final long... namespaceIDs) {
+		return new MediaWiki.CategoryMemberIterator(title, chronologicalOrder, earliest, latest, namespaceIDs);
 	}
 
 	/**
@@ -1765,133 +1693,89 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *            Whether the pages are listed in ascending order (
 	 *            <code>true</code>), or in descending order (<code>false</code>
 	 *            ) according to the category's sort key.
-	 * @param start
+	 * @param first
 	 *            The sort key at which to start enumerating pages in the
 	 *            category. A page having this exact sort key is included in the
 	 *            result. May be <code>null</code> to use only the
 	 *            <code>end</code> bound.
-	 * @param end
+	 * @param last
 	 *            The sort key at which to stop enumerating pages in the
 	 *            category. A page having this exact sort key is excluded from
 	 *            the result. May be <code>null</code> to use only the
 	 *            <code>start</code> bound.
+	 * @param namespaces
+	 *            Whether to require a category member to be in one of the
+	 *            specified namespaces to be retrieved, or not to care about
+	 *            that (<code>null</code>).
 	 * @return an iterator which will return information about each matching
 	 *         page that is a member of the given category when its
 	 *         <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.CategoryMember> getCategoryMembers(final String title, final boolean ascendingOrder, final String start, final String end, final long... namespaces) {
-		return new MediaWiki.CategoryMemberIterator(title, ascendingOrder, start, end, namespaces);
+	public Iterator<MediaWiki.CategoryMember> getCategoryMembers(final String title, final boolean ascendingOrder, final String first, final String last, final long... namespaceIDs) {
+		return new MediaWiki.CategoryMemberIterator(title, ascendingOrder, first, last, namespaceIDs);
 	}
 
 	private class CategoryMemberIterator extends AbstractContinuableQueryIterator<MediaWiki.CategoryMember> {
 		private final Map<String, String> getParams;
 
-		CategoryMemberIterator(final String element, final boolean ascendingOrder, final Object start, final Object end, final long... namespaces) {
+		CategoryMemberIterator(final String element, final boolean ascendingOrder, final Object first, final Object last, final long... namespaceIDs) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "categorymembers", "cmtitle", titleToAPIForm(element), "cmprop", "ids|title|sortkeyprefix|timestamp", "cmlimit", "max");
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 
-			if ((start == null && end == null) || (start instanceof String) || (end instanceof String))
+			if ((first == null && last == null) || (first instanceof String) || (last instanceof String))
 				getParams.put("cmsort", "sortkey");
-			else if (start instanceof Date || end instanceof Date)
+			else if (first instanceof Date || last instanceof Date)
 				getParams.put("cmsort", "timestamp");
 			getParams.put("cmdir", ascendingOrder ? "asc" : "desc");
-			// If the order is descending, we need to reverse start and end.
-			String startValue = start != null ? (start instanceof Date ? dateToISO8601((Date) start) : (String) start) : null;
-			String endValue = end != null ? (end instanceof Date ? dateToISO8601((Date) end) : (String) end) : null;
+			// If the order is descending, we need to reverse them.
+			String firstValue = first != null ? (first instanceof Date ? dateToISO8601((Date) first) : (String) first) : null;
+			String lastValue = last != null ? (last instanceof Date ? dateToISO8601((Date) last) : (String) last) : null;
 			if (ascendingOrder) {
-				if (start != null)
-					getParams.put(start instanceof Date ? "cmstart" : "cmstartsortkeyprefix", startValue);
-				if (end != null)
-					getParams.put(end instanceof Date ? "cmend" : "cmendsortkeyprefix", endValue);
+				getParams.put(first instanceof Date ? "cmstart" : "cmstartsortkeyprefix", firstValue);
+				getParams.put(last instanceof Date ? "cmend" : "cmendsortkeyprefix", lastValue);
 			} else {
-				if (start != null)
-					getParams.put(start instanceof Date ? "cmend" : "cmendsortkeyprefix", startValue);
-				if (end != null)
-					getParams.put(end instanceof Date ? "cmstart" : "cmstartsortkeyprefix", endValue);
+				getParams.put(first instanceof Date ? "cmend" : "cmendsortkeyprefix", firstValue);
+				getParams.put(last instanceof Date ? "cmstart" : "cmstartsortkeyprefix", lastValue);
 			}
 
-			if (namespaces != null && namespaces.length > 0) {
-				StringBuilder cmnamespace = new StringBuilder(namespaces.length * 4);
-				cmnamespace.append(namespaces[0]);
-				for (int i = 1; i < namespaces.length; i++) {
-					cmnamespace.append('|').append(namespaces[i]);
-				}
-				getParams.put("cmnamespace", cmnamespace.toString());
-			}
+			getParams.put("cmnamespace", namespacesParameter(namespaceIDs));
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.CategoryMember convert(Element element) throws Exception {
+			final long namespaceID = Long.parseLong(element.getAttribute("ns"));
+			final String title = element.getAttribute("title");
+			final long pageID = Long.parseLong(element.getAttribute("pageid"));
+			final String sortKey = element.getAttribute("sortkeyprefix");
+			final Date addTime = timestampToDate(element.getAttribute("timestamp"));
+
+			return new MediaWiki.CategoryMember(namespaceID, pageID, addTime, title, sortKey);
 		}
 
-		public synchronized MediaWiki.CategoryMember next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of category members from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("cmcontinue", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element tag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final String title = tag.getAttribute("title");
-				final long pageID = Long.parseLong(tag.getAttribute("pageid"));
-				final String sortKey = tag.getAttribute("sortkeyprefix");
-				final Date addTime = timestampToDate(tag.getAttribute("timestamp"));
+				final NodeList categorymembersTags = xml.getElementsByTagName("categorymembers");
 
-				return new MediaWiki.CategoryMember(pageID, addTime, title, sortKey);
-			} catch (ParseException e) {
-				throw new MediaWiki.IterationException(e);
+				if (categorymembersTags.getLength() > 0) {
+					final Element categorymembersTag = (Element) categorymembersTags.item(0);
+
+					setUpcoming(categorymembersTag.getElementsByTagName("cm"));
+				}
+
+				processContinuation(xml, "categorymembers", "cmcontinue");
 			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // next call will fill it
-			}
-		}
-
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of categories from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("ccontinue", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList categorymembersTags = xml.getElementsByTagName("categorymembers");
-
-					if (categorymembersTags.getLength() > 0) {
-						final Element categorymembersTag = (Element) categorymembersTags.item(0);
-
-						setUpcoming(categorymembersTag.getElementsByTagName("cm"));
-					}
-
-					processContinuation(xml, "categorymembers", "cmcontinue");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
-				}
+				networkLock.unlock();
 			}
 		}
 	}
@@ -1941,13 +1825,13 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * @param title
 	 *            The full name of the image to be examined. That is, the
 	 *            namespace prefix is included.
-	 * @param start
+	 * @param earliest
 	 *            The timestamp at which to start enumerating revisions.
 	 *            Milliseconds are not used. Any revisions made on the second
 	 *            specified by it are included. May be <code>null</code> to use
 	 *            only <code>end</code> (or enumerate all image revisions if
 	 *            <code>end</code> is also <code>null</code>).
-	 * @param end
+	 * @param latest
 	 *            The timestamp at which to stop enumerating revisions.
 	 *            Milliseconds are not used. Any revisions made on the second
 	 *            specified by it are included. May be <code>null</code> to use
@@ -1957,15 +1841,8 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         revision made to the image, in order from newest to oldest, when
 	 *         its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.ImageRevision> getImageRevisions(final String title, final Date start, final Date end) {
-		/*
-		 * Implementation note: This method uses 'start' and 'end' as people
-		 * would, start being before end chronologically. However, the MediaWiki
-		 * API considers 'start' to be after 'end' chronologically because it
-		 * returns image revisions from the newest to the oldest, so they are
-		 * reversed below.
-		 */
-		return new MediaWiki.ImageRevisionIterator(title, end != null ? dateToTimestamp(end) : null, start != null ? dateToTimestamp(start) : null);
+	public Iterator<MediaWiki.ImageRevision> getImageRevisions(final String title, final Date earliest, final Date latest) {
+		return new MediaWiki.ImageRevisionIterator(title, earliest != null ? dateToTimestamp(earliest) : null, latest != null ? dateToTimestamp(latest) : null);
 	}
 
 	private class ImageRevisionIterator extends AbstractContinuableQueryIterator<MediaWiki.ImageRevision> {
@@ -1977,99 +1854,64 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		private final Map<String, String> getParams;
 
-		ImageRevisionIterator(final String element, final String start, final String end) {
-			super(start);
+		ImageRevisionIterator(final String element, final String earliest, final String latest) {
+			/*
+			 * Implementation note: The MediaWiki API considers 'start' to be
+			 * after 'end' chronologically because it returns image revisions
+			 * from the newest to the oldest, so they are reversed below.
+			 */
+			super(latest);
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "imageinfo", "titles", titleToAPIForm(element), "iiprop", "timestamp|user|comment|url|size|sha1|mime", "iilimit", "max");
-			if (end != null) {
-				getParams.put("iiend", end);
-			}
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
+			getParams.put("iiend", earliest);
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.ImageRevision convert(Element element) throws Exception {
+			final Date timestamp = iso8601TimestampParser.parse(element.getAttribute("timestamp"));
+			final String userName = element.getAttribute("user");
+			final long length = Long.parseLong(element.getAttribute("size"));
+			final long width = Long.parseLong(element.getAttribute("width"));
+			final long height = Long.parseLong(element.getAttribute("height"));
+			final String url = element.getAttribute("url");
+			final String comment = element.getAttribute("comment");
+			final String sha1hash = element.getAttribute("sha1");
+			final String mimeType = element.getAttribute("mime");
+
+			return new MediaWiki.ImageRevision(imageFullName, timestamp, userName, length, width, height, url, comment, sha1hash, mimeType);
 		}
 
-		public synchronized MediaWiki.ImageRevision next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of image revisions from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("iistart", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element tag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final Date timestamp = iso8601TimestampParser.parse(tag.getAttribute("timestamp"));
-				final String userName = tag.getAttribute("user");
-				final long length = Long.parseLong(tag.getAttribute("size"));
-				final long width = Long.parseLong(tag.getAttribute("width"));
-				final long height = Long.parseLong(tag.getAttribute("height"));
-				final String url = tag.getAttribute("url");
-				final String comment = tag.getAttribute("comment");
-				final String sha1hash = tag.getAttribute("sha1");
-				final String mimeType = tag.getAttribute("mime");
+				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
+				if (badrevidsTags.getLength() == 0) {
+					final NodeList pageTags = xml.getElementsByTagName("page");
 
-				return new MediaWiki.ImageRevision(imageFullName, timestamp, userName, length, width, height, url, comment, sha1hash, mimeType);
-			} catch (ParseException pe) {
-				throw new MediaWiki.IterationException(pe);
-			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
-			}
-		}
+					if (pageTags.getLength() > 0) {
+						final Element pageTag = (Element) pageTags.item(0);
 
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of image revisions from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("iistart", getContinuation());
-				}
+						imageFullName = pageTag.getAttribute("title");
 
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-					if (badrevidsTags.getLength() == 0) {
-						final NodeList pageTags = xml.getElementsByTagName("page");
-
-						if (pageTags.getLength() > 0) {
-							final Element pageTag = (Element) pageTags.item(0);
-
-							imageFullName = pageTag.getAttribute("title");
-
-							if (!pageTag.hasAttribute("missing")) {
-								setUpcoming(pageTag.getElementsByTagName("ii"));
-							}
+						if (!pageTag.hasAttribute("missing")) {
+							setUpcoming(pageTag.getElementsByTagName("ii"));
 						}
 					}
-
-					processContinuation(xml, "imageinfo", "iistart");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
 				}
+
+				processContinuation(xml, "imageinfo", "iistart");
+			} finally {
+				networkLock.unlock();
 			}
 		}
 	}
@@ -2105,82 +1947,46 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		InterlanguageLinkIterator(final String element) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "langlinks", "titles", titleToAPIForm(element), "lllimit", "max");
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.InterlanguageLink convert(Element element) throws Exception {
+			final String language = element.getAttribute("lang");
+			final String foreignTitle = element.getTextContent();
+
+			return new MediaWiki.InterlanguageLink(language, foreignTitle);
 		}
 
-		public synchronized MediaWiki.InterlanguageLink next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of links from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("llcontinue", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element tag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final String language = tag.getAttribute("lang");
-				final String foreignTitle = tag.getTextContent();
+				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
+				if (badrevidsTags.getLength() == 0) {
+					final NodeList pageTags = xml.getElementsByTagName("page");
 
-				return new MediaWiki.InterlanguageLink(language, foreignTitle);
-			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
-			}
-		}
+					if (pageTags.getLength() > 0) {
+						final Element pageTag = (Element) pageTags.item(0);
 
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of links from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("llcontinue", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-					if (badrevidsTags.getLength() == 0) {
-						final NodeList pageTags = xml.getElementsByTagName("page");
-
-						if (pageTags.getLength() > 0) {
-							final Element pageTag = (Element) pageTags.item(0);
-
-							if (!pageTag.hasAttribute("missing")) {
-								setUpcoming(pageTag.getElementsByTagName("ll"));
-							}
+						if (!pageTag.hasAttribute("missing")) {
+							setUpcoming(pageTag.getElementsByTagName("ll"));
 						}
 					}
-
-					processContinuation(xml, "langlinks", "llcontinue");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
 				}
+
+				processContinuation(xml, "langlinks", "llcontinue");
+			} finally {
+				networkLock.unlock();
 			}
 		}
 	}
@@ -2202,7 +2008,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * 
 	 * @param title
 	 *            The full name of the page to be examined.
-	 * @param namespaces
+	 * @param namespaceIDs
 	 *            The namespaces to return links towards. May be
 	 *            <code>null</code> or an empty array or argument list to
 	 *            include all namespaces. For example, if this is <code>0</code>
@@ -2211,100 +2017,56 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * @return an iterator which will return information about each link that
 	 *         the page contains when its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.Link> getLinks(final String title, final long... namespaces) {
-		return new MediaWiki.LinkIterator(title, namespaces);
+	public Iterator<MediaWiki.Link> getLinks(final String title, final long... namespaceIDs) {
+		return new MediaWiki.LinkIterator(title, namespaceIDs);
 	}
 
 	private class LinkIterator extends AbstractContinuableQueryIterator<MediaWiki.Link> {
 		private final Map<String, String> getParams;
 
-		LinkIterator(final String element, final long[] namespaces) {
-
+		LinkIterator(final String element, final long[] namespaceIDs) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "links", "titles", titleToAPIForm(element), "pllimit", "max");
-			if (namespaces != null && namespaces.length > 0) {
-				StringBuilder plnamespace = new StringBuilder(namespaces.length * 4);
-				plnamespace.append(namespaces[0]);
-				for (int i = 1; i < namespaces.length; i++) {
-					plnamespace.append('|').append(namespaces[i]);
-				}
-				getParams.put("plnamespace", plnamespace.toString());
-			}
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
+			getParams.put("plnamespace", namespacesParameter(namespaceIDs));
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.Link convert(Element element) throws Exception {
+			final long namespaceID = Long.parseLong(element.getAttribute("ns"));
+			final String title = element.getAttribute("title");
+
+			return new MediaWiki.Link(namespaceID, title);
 		}
 
-		public synchronized MediaWiki.Link next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of links from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("plcontinue", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element tag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final long namespaceID = Long.parseLong(tag.getAttribute("ns"));
-				final String title = tag.getAttribute("title");
+				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
+				if (badrevidsTags.getLength() == 0) {
+					final NodeList pageTags = xml.getElementsByTagName("page");
 
-				return new MediaWiki.Link(namespaceID, title);
-			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // next call will fill it
-			}
-		}
+					if (pageTags.getLength() > 0) {
+						final Element pageTag = (Element) pageTags.item(0);
 
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of links from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("plcontinue", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-					if (badrevidsTags.getLength() == 0) {
-						final NodeList pageTags = xml.getElementsByTagName("page");
-
-						if (pageTags.getLength() > 0) {
-							final Element pageTag = (Element) pageTags.item(0);
-
-							if (!pageTag.hasAttribute("missing")) {
-								setUpcoming(pageTag.getElementsByTagName("pl"));
-							}
+						if (!pageTag.hasAttribute("missing")) {
+							setUpcoming(pageTag.getElementsByTagName("pl"));
 						}
 					}
-
-					processContinuation(xml, "links", "plcontinue");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
 				}
+
+				processContinuation(xml, "links", "plcontinue");
+			} finally {
+				networkLock.unlock();
 			}
 		}
 	}
@@ -2329,7 +2091,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * @param title
 	 *            The full name of the page to be examined. Transclusions of
 	 *            <em>other pages</em> on this page are returned.
-	 * @param namespaces
+	 * @param namespaceIDs
 	 *            The namespaces to return transclusions from. May be
 	 *            <code>null</code> or an empty array or argument list to
 	 *            include all namespaces. For example, if this is <code>0</code>
@@ -2339,99 +2101,56 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         page that the page contains when its <code>next</code> method is
 	 *         called
 	 */
-	public Iterator<MediaWiki.Link> getTransclusions(final String title, final long... namespaces) {
-		return new MediaWiki.TransclusionIterator(title, namespaces);
+	public Iterator<MediaWiki.Link> getTransclusions(final String title, final long... namespaceIDs) {
+		return new MediaWiki.TransclusionIterator(title, namespaceIDs);
 	}
 
 	private class TransclusionIterator extends AbstractContinuableQueryIterator<MediaWiki.Link> {
 		private final Map<String, String> getParams;
 
-		TransclusionIterator(final String element, final long[] namespaces) {
+		TransclusionIterator(final String element, final long[] namespaceIDs) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "templates", "titles", titleToAPIForm(element), "tllimit", "max");
-			if (namespaces != null && namespaces.length > 0) {
-				StringBuilder tlnamespace = new StringBuilder(namespaces.length * 4);
-				tlnamespace.append(namespaces[0]);
-				for (int i = 1; i < namespaces.length; i++) {
-					tlnamespace.append('|').append(namespaces[i]);
-				}
-				getParams.put("tlnamespace", tlnamespace.toString());
-			}
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
+			getParams.put("tlnamespace", namespacesParameter(namespaceIDs));
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.Link convert(Element element) throws Exception {
+			final long namespaceID = Long.parseLong(element.getAttribute("ns"));
+			final String title = element.getAttribute("title");
+
+			return new MediaWiki.Link(namespaceID, title);
 		}
 
-		public synchronized MediaWiki.Link next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of links from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("tlcontinue", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element tag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final long namespaceID = Long.parseLong(tag.getAttribute("ns"));
-				final String title = tag.getAttribute("title");
+				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
+				if (badrevidsTags.getLength() == 0) {
+					final NodeList pageTags = xml.getElementsByTagName("page");
 
-				return new MediaWiki.Link(namespaceID, title);
-			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
-			}
-		}
+					if (pageTags.getLength() > 0) {
+						final Element pageTag = (Element) pageTags.item(0);
 
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of links from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("tlcontinue", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-					if (badrevidsTags.getLength() == 0) {
-						final NodeList pageTags = xml.getElementsByTagName("page");
-
-						if (pageTags.getLength() > 0) {
-							final Element pageTag = (Element) pageTags.item(0);
-
-							if (!pageTag.hasAttribute("missing")) {
-								setUpcoming(pageTag.getElementsByTagName("tl"));
-							}
+						if (!pageTag.hasAttribute("missing")) {
+							setUpcoming(pageTag.getElementsByTagName("tl"));
 						}
 					}
-
-					processContinuation(xml, "templates", "tlcontinue");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
 				}
+
+				processContinuation(xml, "templates", "tlcontinue");
+			} finally {
+				networkLock.unlock();
 			}
 		}
 	}
@@ -2457,7 +2176,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *            <code>Boolean.FALSE</code>), or not to care about that (
 	 *            <code>null</code>). This constraint is applied to the pages
 	 *            transcluding the page designated by <code>fullName</code>.
-	 * @param languageLinks
+	 * @param namespaceIDs
 	 *            Whether to require a page to be in one of the specified
 	 *            namespaces to be retrieved, or not to care about that (
 	 *            <code>null</code>). This constraint is applied to the pages
@@ -2474,92 +2193,48 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	private class TranscludingPagesIterator extends AbstractContinuableQueryIterator<MediaWiki.PageDesignation> {
 		private final Map<String, String> getParams;
 
-		TranscludingPagesIterator(final String fullName, final Boolean redirect, final long[] namespaces) {
-			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "embeddedin", "eilimit", "max", "eititle", fullName);
+		TranscludingPagesIterator(final String fullName, final Boolean redirect, final long[] namespaceIDs) {
+			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "embeddedin", "eilimit", "max", "eititle", titleToAPIForm(fullName));
 
 			if (redirect != null)
 				getParams.put("eifilterredir", redirect ? "redirects" : "nonredirects");
-			if (namespaces != null && namespaces.length > 0) {
-				StringBuilder einamespace = new StringBuilder(namespaces.length * 4);
-				einamespace.append(namespaces[0]);
-				for (int i = 1; i < namespaces.length; i++) {
-					einamespace.append('|').append(namespaces[i]);
-				}
-				getParams.put("einamespace", einamespace.toString());
-			}
-
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
+			getParams.put("einamespace", namespacesParameter(namespaceIDs));
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.PageDesignation convert(Element element) throws Exception {
+			final String fullName = element.getAttribute("title");
+			final long namespaceID = Long.parseLong(element.getAttribute("ns"));
+			final long pageID = Long.parseLong(element.getAttribute("pageid"));
+
+			return new MediaWiki.PageDesignation(pageID, fullName, namespaceID);
 		}
 
-		public synchronized MediaWiki.PageDesignation next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of pages from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("eicontinue", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element eiTag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final String fullName = eiTag.getAttribute("title");
-				final long namespaceID = Long.parseLong(eiTag.getAttribute("ns"));
-				final long pageID = Long.parseLong(eiTag.getAttribute("pageid"));
+				final NodeList embeddedinTags = xml.getElementsByTagName("embeddedin");
 
-				return new MediaWiki.PageDesignation(pageID, fullName, namespaceID);
+				if (embeddedinTags.getLength() > 0) {
+					final Element embeddedinTag = (Element) embeddedinTags.item(0);
+
+					setUpcoming(embeddedinTag.getElementsByTagName("ei"));
+				}
+
+				processContinuation(xml, "embeddedin", "eicontinue");
 			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
-			}
-		}
-
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of pages from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("eicontinue", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList embeddedinTags = xml.getElementsByTagName("embeddedin");
-
-					if (embeddedinTags.getLength() > 0) {
-						final Element embeddedinTag = (Element) embeddedinTags.item(0);
-
-						setUpcoming(embeddedinTag.getElementsByTagName("ei"));
-					}
-
-					processContinuation(xml, "embeddedin", "eicontinue");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
-				}
+				networkLock.unlock();
 			}
 		}
 	}
@@ -2585,7 +2260,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *            <code>Boolean.FALSE</code>), or not to care about that (
 	 *            <code>null</code>). This constraint is applied to the pages
 	 *            using the image designated by <code>fullName</code>.
-	 * @param languageLinks
+	 * @param namespaceIDs
 	 *            Whether to require a page to be in one of the specified
 	 *            namespaces to be retrieved, or not to care about that (
 	 *            <code>null</code>). This constraint is applied to the pages
@@ -2602,92 +2277,48 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	private class ImageUsageIterator extends AbstractContinuableQueryIterator<MediaWiki.PageDesignation> {
 		private final Map<String, String> getParams;
 
-		ImageUsageIterator(final String fullName, final Boolean redirect, final long[] namespaces) {
-			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "imageusage", "iulimit", "max", "iutitle", fullName);
+		ImageUsageIterator(final String fullName, final Boolean redirect, final long[] namespaceIDs) {
+			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "imageusage", "iulimit", "max", "iutitle", titleToAPIForm(fullName));
 
 			if (redirect != null)
 				getParams.put("iufilterredir", redirect ? "redirects" : "nonredirects");
-			if (namespaces != null && namespaces.length > 0) {
-				StringBuilder iunamespace = new StringBuilder(namespaces.length * 4);
-				iunamespace.append(namespaces[0]);
-				for (int i = 1; i < namespaces.length; i++) {
-					iunamespace.append('|').append(namespaces[i]);
-				}
-				getParams.put("iunamespace", iunamespace.toString());
-			}
-
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
+			getParams.put("iunamespace", namespacesParameter(namespaceIDs));
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.PageDesignation convert(Element element) throws Exception {
+			final String fullName = element.getAttribute("title");
+			final long namespaceID = Long.parseLong(element.getAttribute("ns"));
+			final long pageID = Long.parseLong(element.getAttribute("pageid"));
+
+			return new MediaWiki.PageDesignation(pageID, fullName, namespaceID);
 		}
 
-		public synchronized MediaWiki.PageDesignation next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of pages from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("iucontinue", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element iuTag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final String fullName = iuTag.getAttribute("title");
-				final long namespaceID = Long.parseLong(iuTag.getAttribute("ns"));
-				final long pageID = Long.parseLong(iuTag.getAttribute("pageid"));
+				final NodeList imageusageTags = xml.getElementsByTagName("imageusage");
 
-				return new MediaWiki.PageDesignation(pageID, fullName, namespaceID);
+				if (imageusageTags.getLength() > 0) {
+					final Element imageusageTag = (Element) imageusageTags.item(0);
+
+					setUpcoming(imageusageTag.getElementsByTagName("iu"));
+				}
+
+				processContinuation(xml, "imageusage", "iucontinue");
 			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
-			}
-		}
-
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of pages from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("iucontinue", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList imageusageTags = xml.getElementsByTagName("imageusage");
-
-					if (imageusageTags.getLength() > 0) {
-						final Element imageusageTag = (Element) imageusageTags.item(0);
-
-						setUpcoming(imageusageTag.getElementsByTagName("iu"));
-					}
-
-					processContinuation(xml, "imageusage", "iucontinue");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
-				}
+				networkLock.unlock();
 			}
 		}
 	}
@@ -2718,7 +2349,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *            <code>Boolean.FALSE</code>), or not to care about that (
 	 *            <code>null</code>). This constraint is applied to the pages
 	 *            linking to the page designated by <code>fullName</code>.
-	 * @param languageLinks
+	 * @param namespaceIDs
 	 *            Whether to require a page to be in one of the specified
 	 *            namespaces to be retrieved, or not to care about that (
 	 *            <code>null</code>). This constraint is applied to the pages
@@ -2737,92 +2368,48 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	private class BacklinkIterator extends AbstractContinuableQueryIterator<MediaWiki.PageDesignation> {
 		private final Map<String, String> getParams;
 
-		BacklinkIterator(final String fullName, final Boolean redirect, final long[] namespaces) {
-			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "backlinks", "bllimit", "max", "bltitle", fullName);
+		BacklinkIterator(final String fullName, final Boolean redirect, final long[] namespaceIDs) {
+			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "backlinks", "bllimit", "max", "bltitle", titleToAPIForm(fullName));
 
 			if (redirect != null)
 				getParams.put("blfilterredir", redirect ? "redirects" : "nonredirects");
-			if (namespaces != null && namespaces.length > 0) {
-				StringBuilder blnamespace = new StringBuilder(namespaces.length * 4);
-				blnamespace.append(namespaces[0]);
-				for (int i = 1; i < namespaces.length; i++) {
-					blnamespace.append('|').append(namespaces[i]);
-				}
-				getParams.put("blnamespace", blnamespace.toString());
-			}
-
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
+			getParams.put("blnamespace", namespacesParameter(namespaceIDs));
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.PageDesignation convert(Element blTag) throws Exception {
+			final String fullName = blTag.getAttribute("title");
+			final long namespaceID = Long.parseLong(blTag.getAttribute("ns"));
+			final long pageID = Long.parseLong(blTag.getAttribute("pageid"));
+
+			return new MediaWiki.PageDesignation(pageID, fullName, namespaceID);
 		}
 
-		public synchronized MediaWiki.PageDesignation next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of pages from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("blcontinue", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element blTag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final String fullName = blTag.getAttribute("title");
-				final long namespaceID = Long.parseLong(blTag.getAttribute("ns"));
-				final long pageID = Long.parseLong(blTag.getAttribute("pageid"));
+				final NodeList backlinksTags = xml.getElementsByTagName("backlinks");
 
-				return new MediaWiki.PageDesignation(pageID, fullName, namespaceID);
+				if (backlinksTags.getLength() > 0) {
+					final Element backlinksTag = (Element) backlinksTags.item(0);
+
+					setUpcoming(backlinksTag.getElementsByTagName("bl"));
+				}
+
+				processContinuation(xml, "backlinks", "blcontinue");
 			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
-			}
-		}
-
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of pages from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("blcontinue", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList backlinksTags = xml.getElementsByTagName("backlinks");
-
-					if (backlinksTags.getLength() > 0) {
-						final Element backlinksTag = (Element) backlinksTags.item(0);
-
-						setUpcoming(backlinksTag.getElementsByTagName("bl"));
-					}
-
-					processContinuation(xml, "backlinks", "blcontinue");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
-				}
+				networkLock.unlock();
 			}
 		}
 	}
@@ -2859,79 +2446,43 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		ExternalLinkIterator(final String element) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "extlinks", "titles", titleToAPIForm(element), "ellimit", "max");
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public String convert(Element element) throws Exception {
+			return element.getTextContent();
 		}
 
-		public synchronized String next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of links from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("eloffset", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element tag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				return tag.getTextContent();
-			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null);
-			}
-		}
+				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
+				if (badrevidsTags.getLength() == 0) {
+					final NodeList pageTags = xml.getElementsByTagName("page");
 
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of links from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("eloffset", getContinuation());
-				}
+					if (pageTags.getLength() > 0) {
+						final Element pageTag = (Element) pageTags.item(0);
 
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-					if (badrevidsTags.getLength() == 0) {
-						final NodeList pageTags = xml.getElementsByTagName("page");
-
-						if (pageTags.getLength() > 0) {
-							final Element pageTag = (Element) pageTags.item(0);
-
-							if (!pageTag.hasAttribute("missing")) {
-								setUpcoming(pageTag.getElementsByTagName("el"));
-							}
+						if (!pageTag.hasAttribute("missing")) {
+							setUpcoming(pageTag.getElementsByTagName("el"));
 						}
 					}
-
-					processContinuation(xml, "extlinks", "eloffset");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
 				}
+
+				processContinuation(xml, "extlinks", "eloffset");
+			} finally {
+				networkLock.unlock();
 			}
 		}
 	}
@@ -2973,9 +2524,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			this.elements = elements;
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "categoryinfo");
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 
 			i = -1;
 		}
@@ -3053,10 +2601,10 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * so the iterator may retrieve all categories regardless of the values
 	 * specified for all the parameters.
 	 * 
-	 * @param start
+	 * @param first
 	 *            The base name of the first category to retrieve. This
 	 *            parameter is <code>null</code> to avoid using this constraint.
-	 * @param end
+	 * @param last
 	 *            The base name of the last category to retrieve. This parameter
 	 *            is <code>null</code> to avoid using this constraint.
 	 * @param prefix
@@ -3080,20 +2628,20 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         matching categories on the wiki that this <tt>MediaWiki</tt>
 	 *         represents when its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.Category> getAllCategories(final String start, final String end, final String prefix, final boolean ascendingOrder, final Long minimumEntries, final Long maximumEntries) {
-		return new MediaWiki.AllCategoriesIterator(start, end, prefix, ascendingOrder, minimumEntries, maximumEntries);
+	public Iterator<MediaWiki.Category> getAllCategories(final String first, final String last, final String prefix, final boolean ascendingOrder, final Long minimumEntries, final Long maximumEntries) {
+		return new MediaWiki.AllCategoriesIterator(first, last, prefix, ascendingOrder, minimumEntries, maximumEntries);
 	}
 
 	private class AllCategoriesIterator extends AbstractContinuableQueryIterator<MediaWiki.Category> {
 		private final Map<String, String> getParams;
 
-		AllCategoriesIterator(final String start, final String end, final String prefix, final boolean ascendingOrder, final Long minimumEntries, final Long maximumEntries) {
-			super(start /* can also be null */);
+		AllCategoriesIterator(final String first, final String last, final String prefix, final boolean ascendingOrder, final Long minimumEntries, final Long maximumEntries) {
+			super(first /* can also be null */);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allcategories", "aclimit", "max", "acprop", "size", "acdir", ascendingOrder ? "ascending" : "descending");
 
-			if (end != null && end.length() > 0)
-				getParams.put("acto", end);
+			if (last != null && last.length() > 0)
+				getParams.put("acto", last);
 			if (prefix != null && prefix.length() > 0)
 				getParams.put("acprefix", prefix);
 
@@ -3101,82 +2649,45 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				getParams.put("acmin", minimumEntries.toString());
 			if (maximumEntries != null)
 				getParams.put("acmax", maximumEntries.toString());
-
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.Category convert(Element element) throws Exception {
+			final long entries = Long.parseLong(element.getAttribute("size"));
+			final long pages = Long.parseLong(element.getAttribute("pages"));
+			final long files = Long.parseLong(element.getAttribute("files"));
+			final long subcategories = Long.parseLong(element.getAttribute("subcats"));
+
+			final String name = element.getTextContent();
+
+			return new MediaWiki.Category(name, entries, pages, files, subcategories);
 		}
 
-		public synchronized MediaWiki.Category next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of categories from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("acfrom", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element cTag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final long entries = Long.parseLong(cTag.getAttribute("size"));
-				final long pages = Long.parseLong(cTag.getAttribute("pages"));
-				final long files = Long.parseLong(cTag.getAttribute("files"));
-				final long subcategories = Long.parseLong(cTag.getAttribute("subcats"));
+				final NodeList allcategoriesTags = xml.getElementsByTagName("allcategories");
 
-				final String name = cTag.getTextContent();
+				if (allcategoriesTags.getLength() > 0) {
+					final Element allcategoriesTag = (Element) allcategoriesTags.item(0);
 
-				return new MediaWiki.Category(name, entries, pages, files, subcategories);
+					setUpcoming(allcategoriesTag.getElementsByTagName("c"));
+				}
+
+				processContinuation(xml, "allcategories", "acfrom");
 			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
-			}
-		}
-
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of categories from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("acfrom", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList allcategoriesTags = xml.getElementsByTagName("allcategories");
-
-					if (allcategoriesTags.getLength() > 0) {
-						final Element allcategoriesTag = (Element) allcategoriesTags.item(0);
-
-						setUpcoming(allcategoriesTag.getElementsByTagName("c"));
-					}
-
-					processContinuation(xml, "allcategories", "acfrom");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
-				}
+				networkLock.unlock();
 			}
 		}
 	}
@@ -3192,7 +2703,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * if it encounters an error.
 	 * </ul>
 	 * 
-	 * @param start
+	 * @param first
 	 *            The base name of the first image to retrieve. This parameter
 	 *            is <code>null</code> to avoid using this constraint.
 	 * @param prefix
@@ -3220,15 +2731,15 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         matching images on the wiki that this <tt>MediaWiki</tt>
 	 *         represents when its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.ImageRevision> getAllImages(final String start, final String prefix, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
-		return new MediaWiki.AllImagesIterator(start, prefix, ascendingOrder, minimumLength, maximumLength, sha1);
+	public Iterator<MediaWiki.ImageRevision> getAllImages(final String first, final String prefix, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
+		return new MediaWiki.AllImagesIterator(first, prefix, ascendingOrder, minimumLength, maximumLength, sha1);
 	}
 
 	private class AllImagesIterator extends AbstractContinuableQueryIterator<MediaWiki.ImageRevision> {
 		private final Map<String, String> getParams;
 
-		AllImagesIterator(final String start, final String prefix, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
-			super(start /* can also be null */);
+		AllImagesIterator(final String first, final String prefix, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
+			super(first /* can also be null */);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allimages", "ailimit", "max", "aiprop", "timestamp|user|comment|url|size|sha1|mime", "aidir", ascendingOrder ? "ascending" : "descending");
 
@@ -3239,92 +2750,50 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				getParams.put("aiminsize", minimumLength.toString());
 			if (maximumLength != null)
 				getParams.put("aimaxsize", maximumLength.toString());
-			if (sha1 != null)
-				getParams.put("aisha1", sha1);
-
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
+			getParams.put("aisha1", sha1);
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.ImageRevision convert(Element imgTag) throws Exception {
+			final String baseName = imgTag.getAttribute("name");
+			final Date timestamp = iso8601TimestampParser.parse(imgTag.getAttribute("timestamp"));
+			final String userName = imgTag.getAttribute("user");
+			final long length = Long.parseLong(imgTag.getAttribute("size"));
+			final long width = Long.parseLong(imgTag.getAttribute("width"));
+			final long height = Long.parseLong(imgTag.getAttribute("height"));
+			final String url = imgTag.getAttribute("url");
+			final String comment = imgTag.getAttribute("comment");
+			final String sha1hash = imgTag.getAttribute("sha1");
+			final String mimeType = imgTag.getAttribute("mime");
+
+			return new MediaWiki.ImageRevision(getNamespaces().getNamespace(MediaWiki.StandardNamespace.FILE).getFullPageName(baseName), timestamp, userName, length, width, height, url, comment, sha1hash, mimeType);
 		}
 
-		public synchronized MediaWiki.ImageRevision next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of images from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("aifrom", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element imgTag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final String baseName = imgTag.getAttribute("name");
-				final Date timestamp = iso8601TimestampParser.parse(imgTag.getAttribute("timestamp"));
-				final String userName = imgTag.getAttribute("user");
-				final long length = Long.parseLong(imgTag.getAttribute("size"));
-				final long width = Long.parseLong(imgTag.getAttribute("width"));
-				final long height = Long.parseLong(imgTag.getAttribute("height"));
-				final String url = imgTag.getAttribute("url");
-				final String comment = imgTag.getAttribute("comment");
-				final String sha1hash = imgTag.getAttribute("sha1");
-				final String mimeType = imgTag.getAttribute("mime");
+				final NodeList allimagesTags = xml.getElementsByTagName("allimages");
 
-				return new MediaWiki.ImageRevision(getNamespaces().getNamespace(MediaWiki.StandardNamespace.FILE).getFullPageName(baseName), timestamp, userName, length, width, height, url, comment, sha1hash, mimeType);
-			} catch (ParseException pe) {
-				throw new MediaWiki.IterationException(pe);
-			} catch (IOException ioe) {
-				throw new MediaWiki.IterationException(ioe);
+				if (allimagesTags.getLength() > 0) {
+					final Element allimagesTag = (Element) allimagesTags.item(0);
+
+					setUpcoming(allimagesTag.getElementsByTagName("img"));
+				}
+
+				processContinuation(xml, "allimages", "aifrom");
 			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null);
-			}
-		}
-
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of images from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("aifrom", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList allimagesTags = xml.getElementsByTagName("allimages");
-
-					if (allimagesTags.getLength() > 0) {
-						final Element allimagesTag = (Element) allimagesTags.item(0);
-
-						setUpcoming(allimagesTag.getElementsByTagName("img"));
-					}
-
-					processContinuation(xml, "allimages", "aifrom");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
-				}
+				networkLock.unlock();
 			}
 		}
 	}
@@ -3340,7 +2809,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * if it encounters an error.
 	 * </ul>
 	 * 
-	 * @param start
+	 * @param first
 	 *            The base name of the first page to retrieve. This parameter is
 	 *            <code>null</code> to avoid using this constraint.
 	 * @param prefix
@@ -3391,15 +2860,15 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         matching pages on the wiki that this <tt>MediaWiki</tt>
 	 *         represents when its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.PageDesignation> getAllPages(final String start, final String prefix, final long namespaceID, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
-		return new MediaWiki.AllPagesIterator(start, prefix, namespaceID, ascendingOrder, minimumLength, maximumLength, redirect, languageLinks, protectionAction, protectionType);
+	public Iterator<MediaWiki.PageDesignation> getAllPages(final String first, final String prefix, final long namespaceID, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
+		return new MediaWiki.AllPagesIterator(first, prefix, namespaceID, ascendingOrder, minimumLength, maximumLength, redirect, languageLinks, protectionAction, protectionType);
 	}
 
 	private class AllPagesIterator extends AbstractContinuableQueryIterator<MediaWiki.PageDesignation> {
 		private final Map<String, String> getParams;
 
-		AllPagesIterator(final String start, final String prefix, final long namespaceID, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
-			super(start /* can also be null */);
+		AllPagesIterator(final String first, final String prefix, final long namespaceID, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
+			super(first /* can also be null */);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allpages", "aplimit", "max", "apnamespace", Long.toString(namespaceID), "apdir", ascendingOrder ? "ascending" : "descending");
 
@@ -3416,82 +2885,44 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				getParams.put("apfilterlanglinks", languageLinks ? "withlanglinks" : "withoutlanglinks");
 			if (protectionAction != null) {
 				getParams.put("apprtype", protectionAction);
-				if (protectionType != null)
-					getParams.put("apprlevel", protectionType);
+				getParams.put("apprlevel", protectionType);
 			}
-
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
+		public MediaWiki.PageDesignation convert(Element element) throws Exception {
+			final String fullName = element.getAttribute("title");
+			final long namespaceID = Long.parseLong(element.getAttribute("ns"));
+			final long pageID = Long.parseLong(element.getAttribute("pageid"));
+
+			return new MediaWiki.PageDesignation(pageID, fullName, namespaceID);
 		}
 
-		public synchronized MediaWiki.PageDesignation next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of pages from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("apfrom", getContinuation());
 
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
 			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element pTag = getUpcoming().get(i);
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
 
-				final String fullName = pTag.getAttribute("title");
-				final long namespaceID = Long.parseLong(pTag.getAttribute("ns"));
-				final long pageID = Long.parseLong(pTag.getAttribute("pageid"));
+				final NodeList allpagesTags = xml.getElementsByTagName("allpages");
 
-				return new MediaWiki.PageDesignation(pageID, fullName, namespaceID);
+				if (allpagesTags.getLength() > 0) {
+					final Element allpagesTag = (Element) allpagesTags.item(0);
+
+					setUpcoming(allpagesTag.getElementsByTagName("p"));
+				}
+
+				processContinuation(xml, "allpages", "apfrom");
 			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
-			}
-		}
-
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of pages from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("apfrom", getContinuation());
-				}
-
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList allpagesTags = xml.getElementsByTagName("allpages");
-
-					if (allpagesTags.getLength() > 0) {
-						final Element allpagesTag = (Element) allpagesTags.item(0);
-
-						setUpcoming(allpagesTag.getElementsByTagName("p"));
-					}
-
-					processContinuation(xml, "allpages", "apfrom");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
-				}
+				networkLock.unlock();
 			}
 		}
 	}
@@ -3530,10 +2961,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			this.elements = elements;
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "users", "usprop", "blockinfo|editcount|groups|rights|registration");
-
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 
 			i = -1;
 		}
@@ -3627,7 +3054,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * accounts that have the bot flag). Even in MediaWiki 1.18, the iteration
 	 * may stop spuriously.
 	 * 
-	 * @param start
+	 * @param first
 	 *            The name of the first user to retrieve. This parameter is
 	 *            <code>null</code> to avoid using this constraint.
 	 * @param prefix
@@ -3641,122 +3068,85 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         matching users on the wiki that this <tt>MediaWiki</tt>
 	 *         represents when its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.User> getAllUsers(final String start, final String prefix, final String group) {
-		return new MediaWiki.AllUsersIterator(start, prefix, group);
+	public Iterator<MediaWiki.User> getAllUsers(final String first, final String prefix, final String group) {
+		return new MediaWiki.AllUsersIterator(first, prefix, group);
 	}
 
 	private class AllUsersIterator extends AbstractContinuableQueryIterator<MediaWiki.User> {
 		private final Map<String, String> getParams;
 
-		AllUsersIterator(final String start, final String prefix, final String group) {
-			super(start /* can also be null */);
+		AllUsersIterator(final String first, final String prefix, final String group) {
+			super(first /* can also be null */);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allusers", "aulimit", "max", "auprop", "blockinfo|editcount|groups|rights|registration");
 
 			if (prefix != null && prefix.length() > 0)
 				getParams.put("auprefix", prefix);
-
-			Integer maxLag = getMaxLag();
-			if (maxLag != null)
-				getParams.put("maxlag", maxLag.toString());
 		}
 
-		public synchronized boolean hasNext() throws MediaWiki.IterationException {
-			cacheUpcoming();
-			return getIndex() + 1 < getUpcoming().size();
-		}
+		public MediaWiki.User convert(Element uTag) throws Exception {
+			final String name = uTag.getAttribute("name");
 
-		public synchronized MediaWiki.User next() throws MediaWiki.IterationException {
-			cacheUpcoming();
+			final TreeSet<String> groups = new TreeSet<String>();
 
-			try {
-				int i = getIndex() + 1;
-				setIndex(i);
-				final Element uTag = getUpcoming().get(i);
+			NodeList gTags = uTag.getElementsByTagName("g");
 
-				final String name = uTag.getAttribute("name");
+			for (int j = 0; j < gTags.getLength(); j++) {
+				Element gTag = (Element) gTags.item(j);
 
-				final TreeSet<String> groups = new TreeSet<String>();
-
-				NodeList gTags = uTag.getElementsByTagName("g");
-
-				for (int j = 0; j < gTags.getLength(); j++) {
-					Element gTag = (Element) gTags.item(j);
-
-					groups.add(gTag.getTextContent());
-				}
-
-				final TreeSet<String> rights = new TreeSet<String>();
-
-				NodeList rTags = uTag.getElementsByTagName("r");
-
-				for (int j = 0; j < rTags.getLength(); j++) {
-					Element rTag = (Element) rTags.item(j);
-
-					rights.add(rTag.getTextContent());
-				}
-
-				final long editCount = Long.parseLong(uTag.getAttribute("editcount"));
-
-				final String blockingUser = uTag.hasAttribute("blockedby") ? uTag.getAttribute("blockedby") : null;
-				final String blockReason = uTag.hasAttribute("blockreason") ? uTag.getAttribute("blockreason") : null;
-				Date registration = null;
-				try {
-					registration = uTag.hasAttribute("registration") ? timestampToDate(uTag.getAttribute("registration")) : null;
-				} catch (ParseException e) {
-					// information unavailable; don't care
-				}
-
-				return new MediaWiki.User(false /*- (not) missing */, name, groups, rights, editCount, blockingUser, blockReason, registration);
-			} finally {
-				if (getIndex() + 1 >= getUpcoming().size())
-					setUpcoming((NodeList) null); // the next call will fill it
+				groups.add(gTag.getTextContent());
 			}
+
+			final TreeSet<String> rights = new TreeSet<String>();
+
+			NodeList rTags = uTag.getElementsByTagName("r");
+
+			for (int j = 0; j < rTags.getLength(); j++) {
+				Element rTag = (Element) rTags.item(j);
+
+				rights.add(rTag.getTextContent());
+			}
+
+			final long editCount = Long.parseLong(uTag.getAttribute("editcount"));
+
+			final String blockingUser = uTag.hasAttribute("blockedby") ? uTag.getAttribute("blockedby") : null;
+			final String blockReason = uTag.hasAttribute("blockreason") ? uTag.getAttribute("blockreason") : null;
+			Date registration = null;
+			try {
+				registration = uTag.hasAttribute("registration") ? timestampToDate(uTag.getAttribute("registration")) : null;
+			} catch (ParseException e) {
+				// information unavailable; don't care
+			}
+
+			return new MediaWiki.User(false /*- (not) missing */, name, groups, rights, editCount, blockingUser, blockReason, registration);
 		}
 
-		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
-			if (getUpcoming() == null) {
-				setUpcoming(Collections.<Element> emptyList());
-				if (isDone())
-					return;
-				// Get the next page of users from the API.
-				// The query continue value from the previous call will be in
-				// start, if applicable.
-				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-				if (getContinuation() != null) {
-					// The start parameter is for only this get.
-					pageGetParams.put("aufrom", getContinuation());
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of users from the API.
+			// The query continue value from the previous call will be in
+			// start, if applicable.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			pageGetParams.put("aufrom", getContinuation());
+
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
+			try {
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
+
+				final NodeList allusersTags = xml.getElementsByTagName("allusers");
+
+				if (allusersTags.getLength() > 0) {
+					final Element allusersTag = (Element) allusersTags.item(0);
+
+					setUpcoming(allusersTag.getElementsByTagName("u"));
 				}
 
-				final String url = createApiGetUrl(pageGetParams);
-
-				networkLock.lock();
-				try {
-					final InputStream in = get(url);
-					Document xml = parse(in);
-					checkError(xml);
-
-					final NodeList allusersTags = xml.getElementsByTagName("allusers");
-
-					if (allusersTags.getLength() > 0) {
-						final Element allusersTag = (Element) allusersTags.item(0);
-
-						setUpcoming(allusersTag.getElementsByTagName("u"));
-					}
-
-					processContinuation(xml, "allusers", "aufrom");
-				} catch (final IOException ioe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(ioe);
-				} catch (MediaWiki.IterationException ie) {
-					setUpcoming((NodeList) null);
-					throw ie;
-				} catch (MediaWiki.MediaWikiException mwe) {
-					setUpcoming((NodeList) null);
-					throw new MediaWiki.IterationException(mwe);
-				} finally {
-					networkLock.unlock();
-				}
+				processContinuation(xml, "allusers", "aufrom");
+			} finally {
+				networkLock.unlock();
 			}
 		}
 	}
@@ -3781,9 +3171,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			return this;
 
 		Map<String, String> getParams = paramValuesToMap("action", "purge", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
+
 		StringBuilder titles = new StringBuilder();
 		for (String title : fullPageNames) {
 			if (titles.length() > 0)
@@ -3832,9 +3220,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki.EditToken startEdit(final String fullName) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "info", "intoken", "edit", "titles", titleToAPIForm(fullName));
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
 
 		String url = createApiGetUrl(getParams);
 
@@ -4076,14 +3461,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	protected MediaWiki editPage(final MediaWiki.EditToken editToken, String section, Boolean requireExist, String text, String editSummary, boolean bot, Boolean minor) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "edit", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
-		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "text", text, "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()));
-		if (editSummary != null)
-			postParams.put("summary", editSummary);
-		if (section != null)
-			postParams.put("section", section);
+		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "text", text, "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()), "summary", editSummary, "section", section);
 		if (bot)
 			postParams.put("bot", "true");
 		if (minor != null)
@@ -4149,12 +3527,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki undoRevision(final MediaWiki.EditToken editToken, long revisionID, String editSummary, boolean bot, Boolean minor) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "edit", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
-		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()), "undo", Long.toString(revisionID));
-		if (editSummary != null)
-			postParams.put("summary", editSummary);
+		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()), "undo", Long.toString(revisionID), "summary", editSummary);
 		if (bot)
 			postParams.put("bot", "true");
 		if (minor != null)
@@ -4223,12 +3596,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki addText(final MediaWiki.EditToken editToken, String text, boolean atEnd, String editSummary, boolean bot, Boolean minor) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "edit", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
-		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()), atEnd ? "appendtext" : "prependtext", text);
-		if (editSummary != null)
-			postParams.put("summary", editSummary);
+		Map<String, String> postParams = paramValuesToMap("title", editToken.getFullPageName(), "token", editToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(editToken.getStartTime()), atEnd ? "appendtext" : "prependtext", text, "summary", editSummary);
 		if (bot)
 			postParams.put("bot", "true");
 		if (minor != null)
@@ -4284,9 +3652,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki.EditToken startMove(final String fullName) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "info", "intoken", "move", "titles", titleToAPIForm(fullName));
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
 
 		String url = createApiGetUrl(getParams);
 
@@ -4342,12 +3707,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki endMove(final MediaWiki.EditToken moveToken, String newFullName, String reason, boolean suppressRedirect, boolean moveTalk, boolean moveSubpages) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "move", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
-		Map<String, String> postParams = paramValuesToMap("from", moveToken.getFullPageName(), "to", newFullName, "token", moveToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(moveToken.getStartTime()));
-		if (reason != null)
-			postParams.put("reason", reason);
+		Map<String, String> postParams = paramValuesToMap("from", moveToken.getFullPageName(), "to", newFullName, "token", moveToken.getTokenText(), "starttimestamp", iso8601TimestampParser.format(moveToken.getStartTime()), "reason", reason);
 		if (suppressRedirect)
 			postParams.put("noredirect", "true");
 		if (moveTalk)
@@ -4398,9 +3758,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki.RollbackToken startRollback(final String fullName) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "revisions", "rvtoken", "rollback", "titles", titleToAPIForm(fullName), "rvlimit", "1");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
 
 		String url = createApiGetUrl(getParams);
 
@@ -4462,12 +3819,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki endRollback(final MediaWiki.RollbackToken rollbackToken, final String comment, final boolean bot) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "rollback", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
-		Map<String, String> postParams = paramValuesToMap("title", rollbackToken.getFullPageName(), "user", rollbackToken.getUserName(), "token", rollbackToken.getTokenText());
-		if (comment != null)
-			postParams.put("summary", comment);
+		Map<String, String> postParams = paramValuesToMap("title", rollbackToken.getFullPageName(), "user", rollbackToken.getUserName(), "token", rollbackToken.getTokenText(), "summary", comment);
 		if (bot)
 			postParams.put("markbot", "true");
 
@@ -4498,7 +3850,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * upload is ended.
 	 * 
 	 * @param baseName
-	 *            The base name, excluding the namespace, of the page to start
+	 *            The base name (excluding the namespace) of the page to start
 	 *            uploading to.
 	 * @return a <tt>MediaWiki.EditToken</tt> containing informaton used to
 	 *         detect conflicts when the upload is ended
@@ -4545,9 +3897,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki endUpload(final MediaWiki.EditToken uploadToken, InputStream content, String comment, String pageText) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "upload", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
 		String url = createApiGetUrl(getParams);
 
 		networkLock.lock();
@@ -4669,9 +4018,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki.EditToken startDelete(final String fullName) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "info", "intoken", "delete", "titles", titleToAPIForm(fullName));
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
 
 		String url = createApiGetUrl(getParams);
 
@@ -4721,12 +4067,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki endDelete(final MediaWiki.EditToken deletionToken, String reason) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "delete", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
-		Map<String, String> postParams = paramValuesToMap("title", deletionToken.getFullPageName(), "starttimestamp", iso8601TimestampParser.format(deletionToken.getStartTime()), "token", deletionToken.getTokenText());
-		if (reason != null)
-			postParams.put("reason", reason);
+		Map<String, String> postParams = paramValuesToMap("title", deletionToken.getFullPageName(), "starttimestamp", iso8601TimestampParser.format(deletionToken.getStartTime()), "token", deletionToken.getTokenText(), "reason", reason);
 		if (deletionToken.getLastRevisionTime() != null)
 			postParams.put("basetimestamp", iso8601TimestampParser.format(deletionToken.getLastRevisionTime()));
 
@@ -4769,9 +4110,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki.EditToken startProtect(final String fullName) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "info", "intoken", "protect", "titles", titleToAPIForm(fullName));
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
 
 		String url = createApiGetUrl(getParams);
 
@@ -4834,12 +4172,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki endProtect(final MediaWiki.EditToken protectionToken, Map<String, MediaWiki.Protection> protections, String reason, boolean cascade) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "protect", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
-		Map<String, String> postParams = paramValuesToMap("title", protectionToken.getFullPageName(), "starttimestamp", iso8601TimestampParser.format(protectionToken.getStartTime()), "token", protectionToken.getTokenText());
-		if (reason != null)
-			postParams.put("reason", reason);
+		Map<String, String> postParams = paramValuesToMap("title", protectionToken.getFullPageName(), "starttimestamp", iso8601TimestampParser.format(protectionToken.getStartTime()), "token", protectionToken.getTokenText(), "reason", reason);
 		if (cascade)
 			postParams.put("cascade", "true");
 		if (protectionToken.getLastRevisionTime() != null)
@@ -4906,9 +4239,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki.UserGroupsToken startUserGroupModification(final String userName) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "list", "users", "ustoken", "userrights", "ususers", titleToAPIForm(userName));
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
 
 		String url = createApiGetUrl(getParams);
 
@@ -4955,12 +4285,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 */
 	public MediaWiki endUserGroupModification(final MediaWiki.UserGroupsToken userRightsToken, Collection<String> add, Collection<String> remove, String reason) throws IOException, MediaWiki.MediaWikiException {
 		Map<String, String> getParams = paramValuesToMap("action", "userrights", "format", "xml");
-		Integer maxLag = getMaxLag();
-		if (maxLag != null)
-			getParams.put("maxlag", maxLag.toString());
-		Map<String, String> postParams = paramValuesToMap("user", userRightsToken.getUserName(), "token", userRightsToken.getTokenText());
-		if (reason != null)
-			postParams.put("reason", reason);
+		Map<String, String> postParams = paramValuesToMap("user", userRightsToken.getUserName(), "token", userRightsToken.getTokenText(), "reason", reason);
 		{
 			StringBuilder value = new StringBuilder();
 			for (String group : add) {
@@ -5767,16 +5092,293 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
-	public class Page {
-		private final boolean missing;
+	public abstract class PageNameComponents {
+		/**
+		 * Page ID. If unknown, this field contains <code>null</code>.
+		 */
+		private final Long pageID;
 
-		private final long pageID;
+		/**
+		 * Namespace ID.
+		 */
+		private final long namespaceID;
 
+		/**
+		 * Namespace.
+		 */
+		private final MediaWiki.Namespace namespace;
+
+		/**
+		 * Base name of the page.
+		 */
+		private final String baseName;
+
+		/**
+		 * Full name of the page.
+		 */
 		private final String fullName;
 
-		private final Date lastEdit;
+		/**
+		 * Initialises an instance of <tt>PageNameComponents</tt> from a full
+		 * page name. The base page name, namespace and namespace ID are filled
+		 * in after getting the list of namespaces from the wiki represented by
+		 * the enclosing <tt>MediaWiki</tt>. The page ID is considered to be
+		 * unknown.
+		 * 
+		 * @param fullPageName
+		 *            Full page name, including namespace prefix.
+		 * @throws IOException
+		 *             if gathering the list of namespaces from the wiki
+		 *             represented by the enclosing <tt>MediaWiki</tt> raises
+		 *             <tt>IOException</tt>
+		 */
+		public PageNameComponents(final String fullPageName) throws IOException {
+			this(fullPageName, (Long) null);
+		}
 
-		private final long namespaceID;
+		/**
+		 * Initialises an instance of <tt>PageNameComponents</tt> from a full
+		 * page name and a base page name. The namespace and namespace ID are
+		 * filled in after getting the list of namespaces from the wiki
+		 * represented by the enclosing <tt>MediaWiki</tt>. The page ID is
+		 * considered to be unknown.
+		 * 
+		 * @param fullPageName
+		 *            Full page name, including namespace prefix.
+		 * @param basePageName
+		 *            Base page name, excluding namespace prefix.
+		 * @throws IOException
+		 *             if gathering the list of namespaces from the wiki
+		 *             represented by the enclosing <tt>MediaWiki</tt> raises
+		 *             <tt>IOException</tt>
+		 */
+		public PageNameComponents(final String fullPageName, final String basePageName) throws IOException {
+			this(fullPageName, basePageName, (Long) null);
+		}
+
+		/**
+		 * Initialises an instance of <tt>PageNameComponents</tt> from a full
+		 * page name and namespace ID. The base page name and namespace are
+		 * filled in after getting the list of namespaces from the wiki
+		 * represented by the enclosing <tt>MediaWiki</tt>. The page ID is
+		 * considered to be unknown.
+		 * 
+		 * @param fullPageName
+		 *            Full page name, including namespace prefix.
+		 * @param namespaceID
+		 *            ID of the namespace containing the page.
+		 * @throws IOException
+		 *             if gathering the list of namespaces from the wiki
+		 *             represented by the enclosing <tt>MediaWiki</tt> raises
+		 *             <tt>IOException</tt>
+		 */
+		public PageNameComponents(final String fullPageName, final long namespaceID) throws IOException {
+			this(fullPageName, namespaceID, (Long) null);
+		}
+
+		/**
+		 * Initialises an instance of <tt>PageNameComponents</tt> from a full
+		 * page name and a base page name. The namespace is filled in after
+		 * getting the list of namespaces from the wiki represented by the
+		 * enclosing <tt>MediaWiki</tt>. The page ID is considered to be
+		 * unknown.
+		 * 
+		 * @param fullPageName
+		 *            Full page name, including namespace prefix.
+		 * @param basePageName
+		 *            Base page name, excluding namespace prefix.
+		 * @param namespaceID
+		 *            ID of the namespace containing the page.
+		 * @throws IOException
+		 *             if gathering the list of namespaces from the wiki
+		 *             represented by the enclosing <tt>MediaWiki</tt> raises
+		 *             <tt>IOException</tt>
+		 */
+		public PageNameComponents(final String fullPageName, final String basePageName, final long namespaceID) throws IOException {
+			this(fullPageName, basePageName, namespaceID, (Long) null);
+		}
+
+		/**
+		 * Initialises an instance of <tt>PageNameComponents</tt> from a full
+		 * page name. The base page name, namespace and namespace ID are filled
+		 * in after getting the list of namespaces from the wiki represented by
+		 * the enclosing <tt>MediaWiki</tt>.
+		 * 
+		 * @param fullPageName
+		 *            Full page name, including namespace prefix.
+		 * @param pageID
+		 *            Page ID, or <code>null</code> if not known.
+		 * @throws IOException
+		 *             if gathering the list of namespaces from the wiki
+		 *             represented by the enclosing <tt>MediaWiki</tt> raises
+		 *             <tt>IOException</tt>
+		 */
+		public PageNameComponents(final String fullPageName, final Long pageID) throws IOException {
+			fullName = fullPageName;
+			MediaWiki.Namespaces namespaces = getNamespaces();
+			baseName = namespaces.removeNamespacePrefix(fullPageName);
+			namespace = namespaces.getNamespaceForPage(fullPageName);
+			namespaceID = namespace.getID();
+			this.pageID = pageID;
+		}
+
+		/**
+		 * Initialises an instance of <tt>PageNameComponents</tt> from a full
+		 * page name and a base page name. The namespace and namespace ID are
+		 * filled in after getting the list of namespaces from the wiki
+		 * represented by the enclosing <tt>MediaWiki</tt>.
+		 * 
+		 * @param fullPageName
+		 *            Full page name, including namespace prefix.
+		 * @param basePageName
+		 *            Base page name, excluding namespace prefix.
+		 * @param pageID
+		 *            Page ID, or <code>null</code> if not known.
+		 * @throws IOException
+		 *             if gathering the list of namespaces from the wiki
+		 *             represented by the enclosing <tt>MediaWiki</tt> raises
+		 *             <tt>IOException</tt>
+		 */
+		public PageNameComponents(final String fullPageName, final String basePageName, final Long pageID) throws IOException {
+			fullName = fullPageName;
+			MediaWiki.Namespaces namespaces = getNamespaces();
+			baseName = basePageName;
+			namespace = namespaces.getNamespaceForPage(fullPageName);
+			namespaceID = namespace.getID();
+			this.pageID = pageID;
+		}
+
+		/**
+		 * Initialises an instance of <tt>PageNameComponents</tt> from a full
+		 * page name and namespace ID. The base page name and namespace are
+		 * filled in after getting the list of namespaces from the wiki
+		 * represented by the enclosing <tt>MediaWiki</tt>.
+		 * 
+		 * @param fullPageName
+		 *            Full page name, including namespace prefix.
+		 * @param namespaceID
+		 *            ID of the namespace containing the page.
+		 * @param pageID
+		 *            Page ID, or <code>null</code> if not known.
+		 * @throws IOException
+		 *             if gathering the list of namespaces from the wiki
+		 *             represented by the enclosing <tt>MediaWiki</tt> raises
+		 *             <tt>IOException</tt>
+		 */
+		public PageNameComponents(final String fullPageName, final long namespaceID, final Long pageID) throws IOException {
+			fullName = fullPageName;
+			MediaWiki.Namespaces namespaces = getNamespaces();
+			baseName = namespaces.removeNamespacePrefix(fullPageName);
+			namespace = namespaces.getNamespace(namespaceID);
+			this.namespaceID = namespaceID;
+			this.pageID = pageID;
+		}
+
+		/**
+		 * Initialises an instance of <tt>PageNameComponents</tt> from a full
+		 * page name and a base page name. The namespace is filled in after
+		 * getting the list of namespaces from the wiki represented by the
+		 * enclosing <tt>MediaWiki</tt>.
+		 * 
+		 * @param fullPageName
+		 *            Full page name, including namespace prefix.
+		 * @param basePageName
+		 *            Base page name, excluding namespace prefix.
+		 * @param namespaceID
+		 *            ID of the namespace containing the page.
+		 * @param pageID
+		 *            Page ID, or <code>null</code> if not known.
+		 * @throws IOException
+		 *             if gathering the list of namespaces from the wiki
+		 *             represented by the enclosing <tt>MediaWiki</tt> raises
+		 *             <tt>IOException</tt>
+		 */
+		public PageNameComponents(final String fullPageName, final String basePageName, final long namespaceID, final Long pageID) throws IOException {
+			fullName = fullPageName;
+			MediaWiki.Namespaces namespaces = getNamespaces();
+			baseName = basePageName;
+			namespace = namespaces.getNamespace(namespaceID);
+			this.namespaceID = namespaceID;
+			this.pageID = pageID;
+		}
+
+		/**
+		 * Returns the full page name for which this <tt>PageNameComponents</tt>
+		 * was created. The full page name consists of the namespace's prefix
+		 * followed by a colon, if it is not the <i>main namespace</i>, followed
+		 * by the base page name.
+		 * 
+		 * @return the full page name for which this <tt>PageNameComponents</tt>
+		 *         was created
+		 * @see #getBasePageName()
+		 * @see MediaWiki.StandardNamespace#MAIN
+		 */
+		public String getFullPageName() {
+			return fullName;
+		}
+
+		/**
+		 * Returns the base page name for which this <tt>PageNameComponents</tt>
+		 * was created.
+		 * 
+		 * @return the base page name for which this <tt>PageNameComponents</tt>
+		 *         was created
+		 */
+		public String getBasePageName() {
+			return baseName;
+		}
+
+		/**
+		 * Returns the namespace containing the page for which this
+		 * <tt>PageNameComponents</tt> was created.
+		 * 
+		 * @return the namespace containing the page for which this
+		 *         <tt>PageNameComponents</tt> was created
+		 */
+		public MediaWiki.Namespace getNamespace() {
+			return namespace;
+		}
+
+		/**
+		 * Returns the ID of the namespace containing the page for which this
+		 * <tt>PageNameComponents</tt> was created.
+		 * <p>
+		 * This is a convenience method for <code>getNamespace().getID()</code>.
+		 * 
+		 * @return the ID of the namespace containing the page for which this
+		 *         <tt>PageNameComponents</tt> was created
+		 */
+		public long getNamespaceID() {
+			return namespaceID;
+		}
+
+		/**
+		 * Returns the ID of the page for which this <tt>PageNameComponents</tt>
+		 * was created.
+		 * <p>
+		 * The ID may be unknown because it was not provided by the API reply
+		 * that created this <tt>PageNameComponents</tt>. In that case, the
+		 * return value is <code>null</code>, and one may get the page ID using
+		 * <code>getPageInformation</code> on the enclosing <tt>MediaWiki</tt>
+		 * instance.
+		 * 
+		 * @return the ID of the page for which this <tt>PageNameComponents</tt>
+		 *         was created, or <code>null</code> if it is unknown
+		 */
+		public Long getPageID() {
+			return pageID;
+		}
+
+		@Override
+		public String toString() {
+			return String.format("PageNameComponents[\"%s\"%s]", fullName, pageID != null ? " (ID " + pageID + ")" : "");
+		}
+	}
+
+	public class Page extends PageNameComponents {
+		private final boolean missing;
+
+		private final Date lastEdit;
 
 		private final long lastRevisionID;
 
@@ -5790,12 +5392,10 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		private final Map<String, MediaWiki.Protection> protections;
 
-		Page(final boolean missing, final long pageID, final String fullName, final Date lastEdit, final long namespaceID, final long lastRevisionID, final long views, final long length, final boolean isRedirect, final boolean isNew, final Map<String, MediaWiki.Protection> protections) {
+		Page(final boolean missing, final long pageID, final String fullName, final Date lastEdit, final long namespaceID, final long lastRevisionID, final long views, final long length, final boolean isRedirect, final boolean isNew, final Map<String, MediaWiki.Protection> protections) throws IOException {
+			super(fullName, namespaceID, missing ? null : pageID);
 			this.missing = missing;
-			this.pageID = pageID;
-			this.fullName = fullName;
 			this.lastEdit = lastEdit;
-			this.namespaceID = namespaceID;
 			this.lastRevisionID = lastRevisionID;
 			this.views = views;
 			this.length = length;
@@ -5819,17 +5419,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 
 		/**
-		 * Returns the ID of the page designated by this <tt>Page</tt>. The
-		 * return value is -1 if the page is missing.
-		 * 
-		 * @return the ID of the page designated by this <tt>Page</tt>
-		 * @see #isMissing()
-		 */
-		public long getPageID() {
-			return pageID;
-		}
-
-		/**
 		 * Returns the date and time at which the page designated by this
 		 * <tt>Page</tt> was last edited. The return value is <code>null</code>
 		 * if the page is missing.
@@ -5840,54 +5429,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		 */
 		public Date getLastEdit() {
 			return lastEdit;
-		}
-
-		/**
-		 * Returns the ID of the namespace containing the page designated by
-		 * this <tt>Page</tt>.
-		 * 
-		 * @return the ID of the page designated by this <tt>Page</tt>
-		 */
-		public long getNamespaceID() {
-			return namespaceID;
-		}
-
-		/**
-		 * Returns the <tt>Namespace</tt> object designating the namespace
-		 * containing the page designated by this <tt>Page</tt>.
-		 * 
-		 * @return the
-		 *         <tt>Namespace<tt> object designating the namespace containing the page designated by this
-		 * <tt>Page</tt>
-		 * @throws IOException
-		 *             if an error occurs while getting the list of namespaces
-		 *             on the wiki represented by the enclosing
-		 *             <tt>MediaWiki</tt>
-		 */
-		public MediaWiki.Namespace getNamespace() throws IOException {
-			return getNamespaces().getNamespace(namespaceID);
-		}
-
-		/**
-		 * Returns the full name of the page designated by this <tt>Page</tt>.
-		 * 
-		 * @return the full name of the page designated by this <tt>Page</tt>
-		 */
-		public String getFullPageName() {
-			return fullName;
-		}
-
-		/**
-		 * Returns the base name of the page designated by this <tt>Page</tt>.
-		 * 
-		 * @return the base name of the page designated by this <tt>Page</tt>
-		 * @throws IOException
-		 *             if an error occurs while getting the list of namespaces
-		 *             on the wiki represented by the enclosing
-		 *             <tt>MediaWiki</tt>
-		 */
-		public String getBasePageName() throws IOException {
-			return getNamespaces().removeNamespacePrefix(fullName);
 		}
 
 		/**
@@ -5976,90 +5517,18 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// Page["Main Page" (missing) (ID 1), redirect, new, 410 bytes
 			// long, last revision: 5207, edited on DATE, views: 61358,
 			// protections: {edit=...}]
-			return String.format("Page[\"%s\"%s%s%s%s%s%s%s%s, protections: %s]", fullName, missing ? " (missing)" : "", pageID != -1 ? " (ID " + pageID + ")" : "", isRedirect ? ", redirect" : "", isNew ? ", new" : "", ", " + length + " bytes long", lastRevisionID != -1 ? ", last revision: " + lastRevisionID : "", lastEdit != null ? ", edited on " + lastEdit.toString() : "", views != -1 ? ", views: " + views : "", protections);
+			return String.format("Page[\"%s\"%s%s%s%s%s%s%s%s, protections: %s]", getFullPageName(), missing ? " (missing)" : "", getPageID() != null ? " (ID " + getPageID() + ")" : "", isRedirect ? ", redirect" : "", isNew ? ", new" : "", ", " + length + " bytes long", lastRevisionID != -1 ? ", last revision: " + lastRevisionID : "", lastEdit != null ? ", edited on " + lastEdit.toString() : "", views != -1 ? ", views: " + views : "", protections);
 		}
 	}
 
-	public class PageDesignation {
-		private final long pageID;
-
-		private final String fullName;
-
-		private final long namespaceID;
-
-		PageDesignation(final long pageID, final String fullName, final long namespaceID) {
-			this.pageID = pageID;
-			this.fullName = fullName;
-			this.namespaceID = namespaceID;
-		}
-
-		/**
-		 * Returns the ID of the page designated by this
-		 * <tt>PageDesignation</tt>.
-		 * 
-		 * @return the ID of the page designated by this
-		 *         <tt>PageDesignation</tt>
-		 */
-		public long getPageID() {
-			return pageID;
-		}
-
-		/**
-		 * Returns the ID of the namespace containing the page designated by
-		 * this <tt>PageDesignation</tt>.
-		 * 
-		 * @return the ID of the namespace containing the page designated by
-		 *         this <tt>PageDesignation</tt>
-		 */
-		public long getNamespaceID() {
-			return namespaceID;
-		}
-
-		/**
-		 * Returns the <tt>Namespace</tt> object designating the namespace
-		 * containing the page designated by this <tt>PageDesignation</tt>.
-		 * 
-		 * @return the
-		 *         <tt>Namespace<tt> object designating the namespace containing the page designated by this
-		 * <tt>PageDesignation</tt>
-		 * @throws IOException
-		 *             if an error occurs while getting the list of namespaces
-		 *             on the wiki represented by the enclosing
-		 *             <tt>MediaWiki</tt>
-		 */
-		public MediaWiki.Namespace getNamespace() throws IOException {
-			return getNamespaces().getNamespace(namespaceID);
-		}
-
-		/**
-		 * Returns the full name of the page designated by this
-		 * <tt>PageDesignation</tt>.
-		 * 
-		 * @return the full name of the page designated by this
-		 *         <tt>PageDesignation</tt>
-		 */
-		public String getFullPageName() {
-			return fullName;
-		}
-
-		/**
-		 * Returns the base name of the page designated by this
-		 * <tt>PageDesignation</tt>.
-		 * 
-		 * @return the base name of the page designated by this
-		 *         <tt>PageDesignation</tt>
-		 * @throws IOException
-		 *             if an error occurs while getting the list of namespaces
-		 *             on the wiki represented by the enclosing
-		 *             <tt>MediaWiki</tt>
-		 */
-		public String getBasePageName() throws IOException {
-			return getNamespaces().removeNamespacePrefix(fullName);
+	public class PageDesignation extends PageNameComponents {
+		PageDesignation(final long pageID, final String fullName, final long namespaceID) throws IOException {
+			super(fullName, namespaceID, pageID);
 		}
 
 		@Override
 		public String toString() {
-			return String.format("PageDesignation[\"%s\" (ID %d)]", fullName, pageID);
+			return String.format("PageDesignation[\"%s\" (ID %d)]", getFullPageName(), getPageID());
 		}
 	}
 
@@ -6365,12 +5834,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 
 		protected synchronized void storeContent() throws IOException, MediaWiki.MediaWikiException {
-			final Map<String, String> getParams = new TreeMap<String, String>();
-			getParams.put("action", "query");
-			getParams.put("format", "xml");
-			getParams.put("prop", "revisions");
-			getParams.put("rvprop", "content");
-			getParams.put("revids", Long.toString(revisionID));
+			final Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "revisions", "rvprop", "content", "revids", Long.toString(revisionID));
 
 			final String url = createApiGetUrl(getParams);
 
@@ -6406,7 +5870,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					} else
 						throw new MediaWiki.ResponseFormatException("expected <rev> tag not found");
 				} else
-					throw new MediaWiki.UnknownError("expected <page> tag not found");
+					throw new MediaWiki.ResponseFormatException("expected <page> tag not found");
 			} finally {
 				networkLock.unlock();
 			}
@@ -6470,56 +5934,15 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
-	public class CategoryMember {
-		private final long pageID;
-
-		private final String fullPageName;
-
+	public class CategoryMember extends PageNameComponents {
 		private final String sortKey;
 
 		private final Date addTime;
 
-		CategoryMember(final long pageID, final Date addTime, final String fullPageName, final String sortKey) {
-			this.pageID = pageID;
+		CategoryMember(final long namespaceID, final long pageID, final Date addTime, final String fullPageName, final String sortKey) throws IOException {
+			super(fullPageName, namespaceID, pageID);
 			this.addTime = addTime;
-			this.fullPageName = fullPageName;
 			this.sortKey = sortKey;
-		}
-
-		/**
-		 * Returns the ID of the page designated by this <tt>CategoryMember</tt>
-		 * .
-		 * 
-		 * @return the ID of the page designated by this <tt>CategoryMember</tt>
-		 */
-		public long getPageID() {
-			return pageID;
-		}
-
-		/**
-		 * Returns the full name of this page, which is a member of a certain
-		 * category.
-		 * 
-		 * @return the full name of this page, which is a member of a certain
-		 *         category
-		 */
-		public String getFullPageName() {
-			return fullPageName;
-		}
-
-		/**
-		 * Returns the base name of this page, which is a member of a certain
-		 * category; that is, the page name without its namespace prefix.
-		 * 
-		 * @return the base name of this page, which is a member of a certain
-		 *         category
-		 * @throws IOException
-		 *             if an error occurs while getting the list of namespaces
-		 *             on the wiki represented by the enclosing
-		 *             <tt>MediaWiki</tt>
-		 */
-		public String getBasePageName() throws IOException {
-			return getNamespaces().removeNamespacePrefix(fullPageName);
 		}
 
 		/**
@@ -6546,13 +5969,11 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		@Override
 		public String toString() {
-			return String.format("CategoryMember[\"%s\" (ID %d) as \"%s\", added %s]", fullPageName, pageID, sortKey, addTime);
+			return String.format("CategoryMember[\"%s\" (ID %d) as \"%s\", added %s]", getFullPageName(), getPageID(), sortKey, addTime);
 		}
 	}
 
-	public class ImageRevision {
-		private final String fullName;
-
+	public class ImageRevision extends PageNameComponents {
 		private final Date timestamp;
 
 		private final String userName;
@@ -6571,8 +5992,8 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		private final String mimeType;
 
-		ImageRevision(final String fullName, final Date timestamp, final String userName, final long length, final long width, final long height, final String url, final String comment, final String sha1hash, final String mimeType) {
-			this.fullName = fullName;
+		ImageRevision(final String fullName, final Date timestamp, final String userName, final long length, final long width, final long height, final String url, final String comment, final String sha1hash, final String mimeType) throws IOException {
+			super(fullName);
 			this.timestamp = timestamp;
 			this.userName = userName;
 			this.length = length;
@@ -6582,17 +6003,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			this.comment = comment;
 			this.sha1hash = sha1hash;
 			this.mimeType = mimeType;
-		}
-
-		/**
-		 * Returns the full name of the page designated by this
-		 * <tt>ImageRevision</tt>.
-		 * 
-		 * @return the full name of the page designated by this
-		 *         <tt>ImageRevision</tt>
-		 */
-		public String getFullPageName() {
-			return fullName;
 		}
 
 		/**
@@ -6791,76 +6201,18 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
-	public class Link {
-		private final long namespaceID;
-
-		private final String fullPageName;
-
-		Link(final long namespace, final String fullPageName) {
-			this.namespaceID = namespace;
-			this.fullPageName = fullPageName;
-		}
-
-		/**
-		 * Returns the ID of the namespace containing the target page of the
-		 * link for which this <tt>Link</tt> was created.
-		 * 
-		 * @return the ID of the namespace containing the target page of the
-		 *         link for which this <tt>Link</tt> was created
-		 */
-		public long getNamespaceID() {
-			return namespaceID;
-		}
-
-		/**
-		 * Returns the <tt>Namespace</tt> corresponding to the namespace
-		 * containing the target page of the link for which this <tt>Link</tt>
-		 * was created, drawn from the enclosing <tt>MediaWiki</tt>'s namespace
-		 * list.
-		 * 
-		 * @return the <tt>Namespace</tt> corresponding to the namespace
-		 *         containing the target page of the link for which this
-		 *         <tt>Link</tt> was created
-		 * @throws IOException
-		 *             if an error occurs while getting the namespaces on the
-		 *             wiki represented by the enclosing <tt>MediaWiki</tt>
-		 */
-		public MediaWiki.Namespace getNamespace() throws IOException {
-			return getNamespaces().getNamespace(namespaceID);
-		}
-
-		/**
-		 * Returns the full name of the article that is linked.
-		 * 
-		 * @return the full name of the article that is linked
-		 */
-		public String getFullPageName() {
-			return fullPageName;
-		}
-
-		/**
-		 * Returns the name of the target page of the link for which this
-		 * <tt>Link</tt> was created, without its namespace prefix.
-		 * 
-		 * @return the name of the target page of the link for which this
-		 *         <tt>Link</tt> was created, without its namespace prefix
-		 * @throws IOException
-		 *             if an error occurs while getting the namespaces on the
-		 *             wiki represented by the enclosing <tt>MediaWiki</tt>
-		 */
-		public String getBasePageName() throws IOException {
-			return getNamespaces().removeNamespacePrefix(fullPageName);
+	public class Link extends PageNameComponents {
+		Link(final long namespace, final String fullPageName) throws IOException {
+			super(fullPageName, namespace);
 		}
 
 		@Override
 		public String toString() {
-			return String.format("Link[\"%s\"]", fullPageName);
+			return String.format("Link[\"%s\"]", getFullPageName());
 		}
 	}
 
-	public class Category {
-		private final String fullName;
-
+	public class Category extends PageNameComponents {
 		private final long entries;
 
 		private final long pages;
@@ -6869,38 +6221,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		private final long subcategories;
 
-		Category(final String fullName, final long entries, final long pages, final long files, final long subcategories) {
-			this.fullName = fullName;
+		Category(final String fullName, final long entries, final long pages, final long files, final long subcategories) throws IOException {
+			super(fullName);
 			this.entries = entries;
 			this.pages = pages;
 			this.files = files;
 			this.subcategories = subcategories;
-		}
-
-		/**
-		 * Returns the full name of the category for which this
-		 * <tt>Category</tt> was created.
-		 * 
-		 * @return the full name of the category for which this
-		 *         <tt>Category</tt> was created
-		 */
-		public String getFullName() {
-			return fullName;
-		}
-
-		/**
-		 * Returns the full name of the category for which this
-		 * <tt>Category</tt> was created.
-		 * 
-		 * @return the full name of the category for which this
-		 *         <tt>Category</tt> was created
-		 * @throws IOException
-		 *             if an error occurs while getting the list of namespaces
-		 *             on the wiki represented by the enclosing
-		 *             <tt>MediaWiki</tt>
-		 */
-		public String getBaseName() throws IOException {
-			return getNamespaces().removeNamespacePrefix(fullName);
 		}
 
 		/**
@@ -6950,7 +6276,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		@Override
 		public String toString() {
-			return String.format("Category[\"%s\", entries: %d, pages: %d, files: %d, subcategories: %d]", fullName, entries, pages, files, subcategories);
+			return String.format("Category[\"%s\", entries: %d, pages: %d, files: %d, subcategories: %d]", getFullPageName(), entries, pages, files, subcategories);
 		}
 	}
 
@@ -7589,6 +6915,30 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		return title.replace(' ', '_');
 	}
 
+	/**
+	 * Converts an array of namespace IDs into the form expected by the API for
+	 * <code>functionShortName + "namespace"</code> parameters, which is the
+	 * namespace IDs in ASCII digit form without thousands separators, separated
+	 * by <code>'|'</code>.
+	 * 
+	 * @param namespaceIDs
+	 *            The IDs of the namespaces to convert. This may be
+	 *            <code>null</code> or empty, in which case <code>null</code>
+	 *            will be returned.
+	 * @return a text string suitable for the API and representing the specified
+	 *         namespace IDs, or <code>null</code> if no namespaces are
+	 *         specified
+	 */
+	protected static String namespacesParameter(final long[] namespaceIDs) {
+		if (namespaceIDs == null || namespaceIDs.length == 0)
+			return null;
+		StringBuilder result = new StringBuilder(namespaceIDs.length * 4);
+		result.append(namespaceIDs[0]);
+		for (int i = 1; i < namespaceIDs.length; i++)
+			result.append('|').append(namespaceIDs[i]);
+		return result.toString();
+	}
+
 	// - - - HELPER CLASSES - - -
 
 	protected abstract class AbstractReadOnlyIterator<T> implements Iterator<T> {
@@ -7599,9 +6949,9 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 	protected abstract class AbstractBufferingIterator<T> extends AbstractReadOnlyIterator<T> {
 		/**
-		 * The index of the next node to return among <code>upcoming</code>.
-		 * This field has the value <code>-1</code> if iteration has not yet
-		 * started or <code>upcoming</code> was just refilled.
+		 * The index of the last node returned among <code>upcoming</code>. This
+		 * field has the value <code>-1</code> if iteration has not yet started
+		 * or <code>upcoming</code> was just refilled.
 		 */
 		private int i = -1;
 
@@ -7613,12 +6963,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		private List<? extends Element> upcoming;
 
 		/**
-		 * Returns the index of the next node to return among
+		 * Returns the index of the last node returned among
 		 * <code>getUpcoming()</code>. The return value is <code>-1</code> if
 		 * iteration has not yet started or <code>upcoming</code> was just
 		 * refilled.
 		 * 
-		 * @return the index of the next node to return among
+		 * @return the index of the last node to return among
 		 *         <code>getUpcoming()</code>
 		 */
 		protected int getIndex() {
@@ -7626,11 +6976,11 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 
 		/**
-		 * Sets the index of the next node to return among
+		 * Sets the index of the last node returned among
 		 * <code>getUpcoming()</code>.
 		 * 
 		 * @param newValue
-		 *            The index of the next node to return among
+		 *            The index of the last node returned among
 		 *            <code>getUpcoming()</code>. This value is <code>-1</code>
 		 *            if <code>upcoming</code> was just refilled.
 		 */
@@ -7737,15 +7087,77 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 
 		/**
-		 * Returns the next continuation value to be used by <code>next</code>.
-		 * Depending on the concrete implementation of
-		 * <tt>AbstractContinuableQueryIterator</tt>, this is a <tt>start</tt>,
-		 * <tt>from</tt> or <tt>continue</tt> value.
+		 * Returns the next continuation value to be used by
+		 * <code>cacheUpcoming</code>. Depending on the concrete implementation
+		 * of <tt>AbstractContinuableQueryIterator</tt>, this is a
+		 * <tt>start</tt>, <tt>from</tt> or <tt>continue</tt> value.
 		 * 
-		 * @return the next continuation value to be used by <code>next</code>
+		 * @return the next continuation value to be used by
+		 *         <code>cacheUpcoming</code>
 		 */
-		public String getContinuation() {
+		protected String getContinuation() {
 			return continuation;
+		}
+
+		/**
+		 * Returns whether this <tt>AbstractContinuableQueryIterator</tt> has at
+		 * least one more element to return. If the pointer into the buffer is
+		 * past the end, the query is continued by calling
+		 * <code>cacheUpcoming</code> before deciding the return value.
+		 */
+		public synchronized boolean hasNext() throws MediaWiki.IterationException {
+			if (getUpcoming() != null && getIndex() + 1 < getUpcoming().size())
+				return true;
+			if (!isDone()) {
+				try {
+					cacheUpcoming();
+				} catch (MediaWiki.IterationException ie) {
+					throw ie;
+				} catch (Exception e) {
+					throw new MediaWiki.IterationException(e);
+				}
+				return getIndex() + 1 < getUpcoming().size();
+			} else
+				return false;
+		}
+
+		/**
+		 * Returns the next element of this
+		 * <tt>AbstractContinuableQueryIterator</tt>. The XML <tt>Element</tt>
+		 * at the buffer's current pointer is converted to an element of type
+		 * <tt>T</tt> using the <code>convert</code> method.
+		 * <p>
+		 * If the pointer into the buffer is past the end, the query is
+		 * continued by calling <code>cacheUpcoming</code> before deciding the
+		 * return value.
+		 * 
+		 * @throws NoSuchElementException
+		 *             if <code>isDone</code> returns <code>true</code>
+		 */
+		public synchronized T next() throws MediaWiki.IterationException {
+			if ((getUpcoming() != null && getIndex() + 1 < getUpcoming().size()) || !isDone()) {
+				if (getUpcoming() == null || getIndex() + 1 >= getUpcoming().size())
+					try {
+						cacheUpcoming();
+					} catch (MediaWiki.IterationException ie) {
+						throw ie;
+					} catch (Exception e) {
+						throw new MediaWiki.IterationException(e);
+					}
+				int index = getIndex() + 1;
+				setIndex(index);
+				Element element = getUpcoming().get(index);
+				if (getIndex() + 1 >= getUpcoming().size())
+					setUpcoming((List<Element>) null);
+				try {
+					return convert(element);
+				} catch (MediaWiki.IterationException ie) {
+					throw ie;
+				} catch (Exception e) {
+					throw new MediaWiki.IterationException(e);
+				}
+			} else
+				throw new NoSuchElementException();
 		}
 
 		/**
@@ -7781,6 +7193,43 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				done = true;
 			}
 		}
+
+		/**
+		 * Converts an XML <tt>Element</tt> containing information to be
+		 * returned into an object of type <tt>T</tt>.
+		 * 
+		 * @param element
+		 *            An XML <tt>Element</tt> containing information to be
+		 *            converted.
+		 * @return the converted element
+		 * @throws Exception
+		 *             if parsing the <tt>Element</tt>'s data throws
+		 *             <tt>Exception</tt>
+		 */
+		protected abstract T convert(Element element) throws Exception;
+
+		/**
+		 * Reads the continuation value, stores the next buffer of elements
+		 * using <code>setUpcoming</code>, and stores the new continuation
+		 * value.
+		 * <p>
+		 * This method can assume that, when it is called, all of the following
+		 * conditions are met:
+		 * <ul>
+		 * <li>The buffer pointer is past its end or the buffer is
+		 * <code>null</code>, so more elements are needed;
+		 * <li>The iteration is not done; that is, <code>isDone()</code> returns
+		 * <code>false</code>.
+		 * <p>
+		 * This method can assume that, if it throws a checked exception, the
+		 * buffer will not be filled, and the iteration will not be considered
+		 * done. It can then be retried later safely.
+		 * 
+		 * @throws Exception
+		 *             if receiving the next buffer's worth of <tt>Element</tt>s
+		 *             throws <tt>Exception</tt>
+		 */
+		protected abstract void cacheUpcoming() throws Exception;
 	}
 
 	// - - - HELPER METHODS FOR CONNECTIONS - - -
@@ -8007,31 +7456,39 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		boolean first = true;
 		if (params != null) {
 			for (final Map.Entry<String, String> param : params.entrySet()) {
-				try {
-					result.append(first ? '?' : '&').append(URLEncoder.encode(param.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(param.getValue(), "UTF-8"));
-					first = false;
-				} catch (final UnsupportedEncodingException shouldNeverHappen) {
-					throw new InternalError("UTF-8 is not supported by this Java VM");
-				}
+				if (param.getValue() != null)
+					try {
+						result.append(first ? '?' : '&').append(URLEncoder.encode(param.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(param.getValue(), "UTF-8"));
+						first = false;
+					} catch (final UnsupportedEncodingException shouldNeverHappen) {
+						throw new InternalError("UTF-8 is not supported by this Java VM");
+					}
 			}
+		}
+		Integer maxLag = getMaxLag();
+		if (maxLag != null) {
+			result.append(first ? '?' : '&').append("maxlag=").append(maxLag);
+			first = false;
 		}
 		return result.toString();
 	}
 
 	protected String createApiPostData(final Map<String, String> params) {
+		// TODO Make a version that allows forcing a param to be sent last
 		final StringBuilder result = new StringBuilder();
 		boolean first = true;
 		if (params != null) {
 			for (final Map.Entry<String, String> param : params.entrySet()) {
-				try {
-					if (!first) {
-						result.append('&');
+				if (param.getValue() != null)
+					try {
+						if (!first) {
+							result.append('&');
+						}
+						result.append(URLEncoder.encode(param.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(param.getValue(), "UTF-8"));
+						first = false;
+					} catch (final UnsupportedEncodingException shouldNeverHappen) {
+						throw new InternalError("UTF-8 is not supported by this Java VM");
 					}
-					result.append(URLEncoder.encode(param.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(param.getValue(), "UTF-8"));
-					first = false;
-				} catch (final UnsupportedEncodingException shouldNeverHappen) {
-					throw new InternalError("UTF-8 is not supported by this Java VM");
-				}
 			}
 		}
 		return result.toString();
@@ -8043,11 +7500,11 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * making it possible to put everything on one line.
 	 * 
 	 * @param paramValues
-	 *            Parameters and values. Even-numbered indices must be
-	 *            parameters; odd-numbered indices must be values. The length of
-	 *            this parameter list must be even.
+	 *            Parameters and values. Even-numbered indices must be parameter
+	 *            names; odd-numbered indices must be values. The length of this
+	 *            parameter list must be even.
 	 * @return a modifiable <tt>Map</tt> object that initially contains the
-	 *         supplied parameters as keys and values as values
+	 *         supplied parameters as keys and values
 	 */
 	protected Map<String, String> paramValuesToMap(String... paramValues) {
 		TreeMap<String, String> result = new TreeMap<String, String>();
