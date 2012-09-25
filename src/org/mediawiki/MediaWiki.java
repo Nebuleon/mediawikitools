@@ -1427,36 +1427,35 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		return new MediaWiki.MultipleRevisionIterator(title, "rvstartid", earliestID, "rvendid", latestID, getContentImmediately);
 	}
 
-	private class MultipleRevisionIterator extends AbstractContinuableQueryIterator<MediaWiki.Revision> {
+	private class MultipleRevisionIterator extends AbstractBufferingIterator<MediaWiki.Revision> {
 		/**
 		 * The type of the element given for the lower bound. This is either
 		 * "rvstart" or "rvstartid", corresponding to the parameter names
 		 * acceptable for prop=revisions enumeration.
 		 */
-		private String earliestType;
+		private String startType;
 
 		/**
 		 * The element given for the lower bound. The type of this field is
 		 * either Date or Long, and may be <code>null</code> if the start
 		 * parameter is to be omitted.
-		 * <p>
-		 * This field is not in the continuation, despite the use of
-		 * <tt>AbstractContinuableQueryIterator</tt>, because its type can
-		 * change.
 		 */
-		private Object earliest;
+		private Object start;
 
 		private final boolean getContentImmediately;
 
 		private final Map<String, String> getParams;
 
-		MultipleRevisionIterator(final String element, final String earliestType, final Object earliest, final String latestType, final Object latest, final boolean getContentImmediately) {
+		MultipleRevisionIterator(final String element, final String startType, final Object start, final String endType, final Object end, final boolean getContentImmediately) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "revisions", "titles", titleToAPIForm(element), "rvprop", "ids|flags|timestamp|user|comment|size", "rvdir", "newer", "rvlimit", "max");
-			this.earliestType = earliestType;
-			this.earliest = earliest;
-			if (latest != null) {
-				getParams.put(latestType, latest.toString());
+			this.startType = startType;
+			this.start = start;
+			if (end != null) {
+				getParams.put(endType, end.toString());
 			}
+			Integer maxLag = getMaxLag();
+			if (maxLag != null)
+				getParams.put("maxlag", maxLag.toString());
 
 			if (getContentImmediately) {
 				getParams.put("rvprop", getParams.get("rvprop") + "|content");
@@ -1465,95 +1464,127 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			this.getContentImmediately = getContentImmediately;
 		}
 
-		public MediaWiki.Revision convert(Element tag) throws Exception {
-			final long revisionID = Long.parseLong(tag.getAttribute("revid"));
-			final long parentID = tag.hasAttribute("parentid") ? Long.parseLong(tag.getAttribute("parentid")) : -1;
-
-			final Date timestamp = iso8601TimestampParser.parse(tag.getAttribute("timestamp"));
-
-			final boolean userHidden = tag.hasAttribute("userhidden");
-			final String userName = userHidden ? null : tag.getAttribute("user");
-
-			final boolean commentHidden = tag.hasAttribute("commenthidden");
-			final String comment = commentHidden ? null : tag.getAttribute("comment");
-
-			final boolean isMinor = tag.hasAttribute("minor");
-			final boolean isAnonymous = tag.hasAttribute("anon");
-
-			final long length = tag.hasAttribute("size") ? Long.parseLong(tag.getAttribute("size")) : 0;
-
-			MediaWiki.Revision result = new MediaWiki.Revision(revisionID, parentID, timestamp, userName, userHidden, length, comment, commentHidden, isMinor, isAnonymous);
-
-			if (getContentImmediately) {
-				if (tag.hasAttribute("contenthidden"))
-					result.contentHidden = true;
-				else
-					result.content = tag.getTextContent();
-				result.contentStored = true;
-			}
-
-			return result;
+		public synchronized boolean hasNext() throws MediaWiki.IterationException {
+			cacheUpcoming();
+			return getIndex() + 1 < getUpcoming().size();
 		}
 
-		protected synchronized void cacheUpcoming() throws Exception {
-			// Get the next page of revisions from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
-			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			if (earliest != null) {
-				// The start parameter is for only this get.
-				pageGetParams.put(earliestType, earliest instanceof Date ? dateToTimestamp((Date) earliest) : earliest.toString());
-			}
+		public synchronized MediaWiki.Revision next() throws MediaWiki.IterationException {
+			cacheUpcoming();
 
-			final String url = createApiGetUrl(pageGetParams);
-
-			networkLock.lock();
 			try {
-				final InputStream in = get(url);
-				Document xml = parse(in);
-				checkError(xml);
+				int i = getIndex() + 1;
+				setIndex(i);
+				final Element tag = getUpcoming().get(i);
 
-				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-				if (badrevidsTags.getLength() == 0) {
-					final NodeList pageTags = xml.getElementsByTagName("page");
+				final long revisionID = Long.parseLong(tag.getAttribute("revid"));
+				final long parentID = tag.hasAttribute("parentid") ? Long.parseLong(tag.getAttribute("parentid")) : -1;
 
-					if (pageTags.getLength() > 0) {
-						final Element pageTag = (Element) pageTags.item(0);
+				final Date timestamp = iso8601TimestampParser.parse(tag.getAttribute("timestamp"));
 
-						if (!pageTag.hasAttribute("missing")) {
-							setUpcoming(pageTag.getElementsByTagName("rev"));
+				final boolean userHidden = tag.hasAttribute("userhidden");
+				final String userName = userHidden ? null : tag.getAttribute("user");
+
+				final boolean commentHidden = tag.hasAttribute("commenthidden");
+				final String comment = commentHidden ? null : tag.getAttribute("comment");
+
+				final boolean isMinor = tag.hasAttribute("minor");
+				final boolean isAnonymous = tag.hasAttribute("anon");
+
+				final long length = tag.hasAttribute("size") ? Long.parseLong(tag.getAttribute("size")) : 0;
+
+				MediaWiki.Revision result = new MediaWiki.Revision(revisionID, parentID, timestamp, userName, userHidden, length, comment, commentHidden, isMinor, isAnonymous);
+
+				if (getContentImmediately) {
+					if (tag.hasAttribute("contenthidden"))
+						result.contentHidden = true;
+					else
+						result.content = tag.getTextContent();
+					result.contentStored = true;
+				}
+
+				return result;
+			} catch (final ParseException pe) {
+				throw new MediaWiki.IterationException(pe);
+			} finally {
+				if (getIndex() + 1 >= getUpcoming().size())
+					setUpcoming((NodeList) null);
+			}
+		}
+
+		protected synchronized void cacheUpcoming() throws MediaWiki.IterationException {
+			if (getUpcoming() == null) {
+				setUpcoming(Collections.<Element> emptyList());
+				if (startType.equals("done"))
+					return;
+				// Get the next page of revisions from the API.
+				// The query continue value from the previous call will be in
+				// start, if applicable.
+				final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+				if (start != null) {
+					// The start parameter is for only this get.
+					pageGetParams.put(startType, start instanceof Date ? dateToTimestamp((Date) start) : start.toString());
+				}
+
+				final String url = createApiGetUrl(pageGetParams);
+
+				networkLock.lock();
+				try {
+					final InputStream in = get(url);
+					Document xml = parse(in);
+					checkError(xml);
+
+					final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
+					if (badrevidsTags.getLength() == 0) {
+						final NodeList pageTags = xml.getElementsByTagName("page");
+
+						if (pageTags.getLength() > 0) {
+							final Element pageTag = (Element) pageTags.item(0);
+
+							if (!pageTag.hasAttribute("missing")) {
+								setUpcoming(pageTag.getElementsByTagName("rev"));
+							}
 						}
 					}
-				}
 
-				/*
-				 * Honor query-continue: start at the next named ID. If there's
-				 * no query-continue, the iteration is done. Put the special
-				 * value "done" in earliestType so that the next call doesn't
-				 * continue the iteration.
-				 */
-				final NodeList queryContinueTags = xml.getElementsByTagName("query-continue");
+					/*
+					 * Honor query-continue: start at the next named ID. If
+					 * there's no query-continue, the iteration is done. Put the
+					 * special value "done" in startType so that the next call
+					 * doesn't continue the iteration.
+					 */
+					final NodeList queryContinueTags = xml.getElementsByTagName("query-continue");
 
-				if (queryContinueTags.getLength() > 0) {
-					final Element queryContinueTag = (Element) queryContinueTags.item(0);
+					if (queryContinueTags.getLength() > 0) {
+						final Element queryContinueTag = (Element) queryContinueTags.item(0);
 
-					final NodeList revisionsTags = queryContinueTag.getElementsByTagName("revisions");
+						final NodeList revisionsTags = queryContinueTag.getElementsByTagName("revisions");
 
-					if (revisionsTags.getLength() > 0) {
-						final Element revisionsTag = (Element) revisionsTags.item(0);
+						if (revisionsTags.getLength() > 0) {
+							final Element revisionsTag = (Element) revisionsTags.item(0);
 
-						// Whatever the initial start type was, it's now
-						// by ID.
-						earliestType = "rvstartid";
-						earliest = Long.valueOf(revisionsTag.getAttribute("rvstartid"));
+							// Whatever the initial start type was, it's now
+							// by ID.
+							startType = "rvstartid";
+							start = Long.valueOf(revisionsTag.getAttribute("rvstartid"));
+						} else {
+							startType = "done";
+						}
 					} else {
-						earliestType = "done";
+						startType = "done";
 					}
-				} else {
-					earliestType = "done";
+				} catch (final IOException ioe) {
+					setUpcoming((NodeList) null);
+					throw new MediaWiki.IterationException(ioe);
+				} catch (MediaWiki.IterationException ie) {
+					setUpcoming((NodeList) null);
+					throw ie;
+				} catch (MediaWiki.MediaWikiException mwe) {
+					setUpcoming((NodeList) null);
+					throw new MediaWiki.IterationException(mwe);
+				} finally {
+					networkLock.unlock();
 				}
-			} finally {
-				networkLock.unlock();
 			}
 		}
 	}
