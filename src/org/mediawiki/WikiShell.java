@@ -22,6 +22,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -38,7 +40,6 @@ import java.util.regex.PatternSyntaxException;
 import org.mediawiki.MediaWiki.MediaWikiException;
 
 // TODO Add a 'lines' command that outputs 23 lines at a time
-// TODO Special page aliases command
 /**
  * A wiki shell that allows a user to perform actions on the wiki using the
  * command-line.
@@ -195,6 +196,11 @@ public class WikiShell {
 		work("Registering commands...");
 		try {
 			{
+				final Exit e = new Exit();
+				builtinCommands.put("exit", e);
+				builtinCommands.put("quit", e);
+			}
+			{
 				final Connect c = new Connect();
 				builtinCommands.put("connect", c);
 				builtinCommands.put("open", c);
@@ -215,6 +221,13 @@ public class WikiShell {
 				final Namespaces n = new Namespaces();
 				builtinCommands.put("namespaces", n);
 				builtinCommands.put("ns", n);
+			}
+			{
+				final SpecialPages s = new SpecialPages();
+				builtinCommands.put("specialpages", s);
+				builtinCommands.put("specialpage", s);
+				builtinCommands.put("specials", s);
+				builtinCommands.put("special", s);
 			}
 			{
 				final PageInformation p = new PageInformation();
@@ -1717,6 +1730,65 @@ public class WikiShell {
 			System.err.println("{namespaces | ns} [<namespace number or name>]");
 			System.err.println();
 			System.err.println("The namespace number or name is optional. If provided, only information about the given namespace is displayed.");
+		}
+	}
+
+	public static class SpecialPages extends AbstractPageReadCommand {
+		@Override
+		public void getPageName(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.pageName != null)
+				return;
+			context.pageName = input("special page name (<all>): ");
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
+
+			Map<String, String> specialPageAliases = context.wiki.getSpecialPageAliases();
+
+			if (context.pageName.length() > 0) {
+				final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
+				if (namespaces.getNamespaceForPage(context.pageName).getID() != MediaWiki.StandardNamespace.SPECIAL) {
+					context.pageName = namespaces.getNamespace(MediaWiki.StandardNamespace.SPECIAL).getFullPageName(namespaces.removeNamespacePrefix(context.pageName));
+					System.err.println(String.format("Note: Page name changed to %s", context.pageName));
+				}
+
+				String specialPage = specialPageAliases.get(context.pageName);
+				if (specialPage != null) {
+					if (specialPage.equals(context.pageName))
+						System.out.println(String.format("%s is a valid special page", context.pageName));
+					else
+						System.out.println(String.format("%1$s is an alias of %2$s", context.pageName, specialPage));
+				} else
+					System.err.println(context.pageName + ": No such special page");
+			} else {
+				Map<String, Set<String>> reversedAliases = new HashMap<String, Set<String>>();
+				for (Map.Entry<String, String> entry : specialPageAliases.entrySet()) {
+					String canonicalName = entry.getValue(), alias = entry.getKey();
+
+					Set<String> aliasesForName = reversedAliases.get(canonicalName);
+					if (aliasesForName == null) {
+						aliasesForName = new TreeSet<String>();
+						reversedAliases.put(canonicalName, aliasesForName);
+					}
+					if (!alias.equals(canonicalName)) {
+						aliasesForName.add(alias);
+					}
+				}
+				for (Map.Entry<String, Set<String>> entry : reversedAliases.entrySet()) {
+					System.out.println(entry.getKey());
+					for (final String alias : entry.getValue()) {
+						System.out.println(" |- " + alias);
+					}
+				}
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Displays information about the special pages on the current wiki.");
+			System.err.println();
+			System.err.println("special[page][s] [<special page name>]");
+			System.err.println();
+			System.err.println("The special page name is optional. If provided, only information about the given special page is displayed.");
 		}
 	}
 
@@ -4605,6 +4677,18 @@ public class WikiShell {
 		}
 		if (user.getBlockingUser() != null) {
 			System.out.println(String.format(" blocked by %s (%s)", user.getBlockingUser(), user.getBlockReason()));
+		}
+	}
+
+	public static class Exit extends AbstractCommand {
+		public void perform(CommandContext context) throws IOException, MediaWikiException, ParseException {
+			throw new NullPointerException("exiting the shell");
+		}
+
+		public void help() throws IOException {
+			System.err.println("Exits the shell and any subshells started by the 'for' command.");
+			System.err.println();
+			System.err.println("exit | quit");
 		}
 	}
 }

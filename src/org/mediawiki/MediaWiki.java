@@ -822,6 +822,9 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * Gets a list of special page aliases on the wiki that this
 	 * <tt>MediaWiki</tt> represents. The return value may be cached from an
 	 * earlier invocation of the method on the same <tt>MediaWiki</tt>.
+	 * <p>
+	 * The return value maps an alias name to the canonical name of its special
+	 * page, for all special page names and aliases.
 	 * 
 	 * @return a list of special page aliases on the wiki that this
 	 *         <tt>MediaWiki</tt> represents
