@@ -62,7 +62,6 @@ import org.xml.sax.SAXException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class MediaWiki implements Serializable, ObjectInputValidation {
-	// TODO Remove badrevids checking from most classes that don't need it
 	// TODO Add parse-wikitext and parse-pagetext
 	// TODO Add block/unblock
 	// TODO Add undelete
@@ -1647,16 +1646,13 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				Document xml = parse(in);
 				checkError(xml);
 
-				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-				if (badrevidsTags.getLength() == 0) {
-					final NodeList pageTags = xml.getElementsByTagName("page");
+				final NodeList pageTags = xml.getElementsByTagName("page");
 
-					if (pageTags.getLength() > 0) {
-						final Element pageTag = (Element) pageTags.item(0);
+				if (pageTags.getLength() > 0) {
+					final Element pageTag = (Element) pageTags.item(0);
 
-						if (!pageTag.hasAttribute("missing")) {
-							setUpcoming(pageTag.getElementsByTagName("cl"));
-						}
+					if (!pageTag.hasAttribute("missing")) {
+						setUpcoming(pageTag.getElementsByTagName("cl"));
 					}
 				}
 
@@ -2005,16 +2001,13 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				Document xml = parse(in);
 				checkError(xml);
 
-				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-				if (badrevidsTags.getLength() == 0) {
-					final NodeList pageTags = xml.getElementsByTagName("page");
+				final NodeList pageTags = xml.getElementsByTagName("page");
 
-					if (pageTags.getLength() > 0) {
-						final Element pageTag = (Element) pageTags.item(0);
+				if (pageTags.getLength() > 0) {
+					final Element pageTag = (Element) pageTags.item(0);
 
-						if (!pageTag.hasAttribute("missing")) {
-							setUpcoming(pageTag.getElementsByTagName("ll"));
-						}
+					if (!pageTag.hasAttribute("missing")) {
+						setUpcoming(pageTag.getElementsByTagName("ll"));
 					}
 				}
 
@@ -2085,16 +2078,13 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				Document xml = parse(in);
 				checkError(xml);
 
-				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-				if (badrevidsTags.getLength() == 0) {
-					final NodeList pageTags = xml.getElementsByTagName("page");
+				final NodeList pageTags = xml.getElementsByTagName("page");
 
-					if (pageTags.getLength() > 0) {
-						final Element pageTag = (Element) pageTags.item(0);
+				if (pageTags.getLength() > 0) {
+					final Element pageTag = (Element) pageTags.item(0);
 
-						if (!pageTag.hasAttribute("missing")) {
-							setUpcoming(pageTag.getElementsByTagName("pl"));
-						}
+					if (!pageTag.hasAttribute("missing")) {
+						setUpcoming(pageTag.getElementsByTagName("pl"));
 					}
 				}
 
@@ -2169,16 +2159,13 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				Document xml = parse(in);
 				checkError(xml);
 
-				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-				if (badrevidsTags.getLength() == 0) {
-					final NodeList pageTags = xml.getElementsByTagName("page");
+				final NodeList pageTags = xml.getElementsByTagName("page");
 
-					if (pageTags.getLength() > 0) {
-						final Element pageTag = (Element) pageTags.item(0);
+				if (pageTags.getLength() > 0) {
+					final Element pageTag = (Element) pageTags.item(0);
 
-						if (!pageTag.hasAttribute("missing")) {
-							setUpcoming(pageTag.getElementsByTagName("tl"));
-						}
+					if (!pageTag.hasAttribute("missing")) {
+						setUpcoming(pageTag.getElementsByTagName("tl"));
 					}
 				}
 
@@ -2501,16 +2488,13 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				Document xml = parse(in);
 				checkError(xml);
 
-				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-				if (badrevidsTags.getLength() == 0) {
-					final NodeList pageTags = xml.getElementsByTagName("page");
+				final NodeList pageTags = xml.getElementsByTagName("page");
 
-					if (pageTags.getLength() > 0) {
-						final Element pageTag = (Element) pageTags.item(0);
+				if (pageTags.getLength() > 0) {
+					final Element pageTag = (Element) pageTags.item(0);
 
-						if (!pageTag.hasAttribute("missing")) {
-							setUpcoming(pageTag.getElementsByTagName("el"));
-						}
+					if (!pageTag.hasAttribute("missing")) {
+						setUpcoming(pageTag.getElementsByTagName("el"));
 					}
 				}
 
@@ -2579,28 +2563,25 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				Document xml = parse(in);
 				checkError(xml);
 
-				final NodeList badrevidsTags = xml.getElementsByTagName("badrevids");
-				if (badrevidsTags.getLength() == 0) {
-					final NodeList pageTags = xml.getElementsByTagName("page");
+				final NodeList pageTags = xml.getElementsByTagName("page");
 
-					if (pageTags.getLength() > 0) {
-						final Element pageTag = (Element) pageTags.item(0);
+				if (pageTags.getLength() > 0) {
+					final Element pageTag = (Element) pageTags.item(0);
 
-						if (!pageTag.hasAttribute("missing")) {
-							final NodeList categoryinfoTags = pageTag.getElementsByTagName("categoryinfo");
+					if (!pageTag.hasAttribute("missing")) {
+						final NodeList categoryinfoTags = pageTag.getElementsByTagName("categoryinfo");
 
-							if (categoryinfoTags.getLength() > 0) {
-								final String fullName = pageTag.getAttribute("title");
+						if (categoryinfoTags.getLength() > 0) {
+							final String fullName = pageTag.getAttribute("title");
 
-								final Element categoryinfoTag = (Element) categoryinfoTags.item(0);
+							final Element categoryinfoTag = (Element) categoryinfoTags.item(0);
 
-								final long entries = Long.parseLong(categoryinfoTag.getAttribute("size"));
-								final long pages = Long.parseLong(categoryinfoTag.getAttribute("pages"));
-								final long files = Long.parseLong(categoryinfoTag.getAttribute("files"));
-								final long subcategories = Long.parseLong(categoryinfoTag.getAttribute("subcats"));
+							final long entries = Long.parseLong(categoryinfoTag.getAttribute("size"));
+							final long pages = Long.parseLong(categoryinfoTag.getAttribute("pages"));
+							final long files = Long.parseLong(categoryinfoTag.getAttribute("files"));
+							final long subcategories = Long.parseLong(categoryinfoTag.getAttribute("subcats"));
 
-								return new MediaWiki.Category(fullName, entries, pages, files, subcategories);
-							}
+							return new MediaWiki.Category(fullName, entries, pages, files, subcategories);
 						}
 					}
 				}
