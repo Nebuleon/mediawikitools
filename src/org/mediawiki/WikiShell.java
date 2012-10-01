@@ -367,6 +367,11 @@ public class WikiShell {
 				builtinCommands.put("listusers", a);
 			}
 			builtinCommands.put("purge", new Purge());
+			{
+				final ExpandTemplatesInWikitext e = new ExpandTemplatesInWikitext();
+				builtinCommands.put("expandtemplates", e);
+				builtinCommands.put("expand", e);
+			}
 			builtinCommands.put("newsection", new NewSection());
 			{
 				final ReplaceText r = new ReplaceText();
@@ -2878,6 +2883,62 @@ public class WikiShell {
 			System.err.println("purge [<page name>]");
 			System.err.println();
 			System.err.println("The page name is mandatory and will be requested if not provided.");
+		}
+	}
+
+	public static class ExpandTemplatesInWikitext extends AbstractCommand {
+		@Override
+		public void parseArguments(final CommandContext context) {
+			final String arguments = context.arguments.trim();
+			if (arguments.length() > 0) {
+				context.essentialInput = arguments;
+				context.arguments = "";
+			}
+		}
+
+		@Override
+		public void getEssentialInput(CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.essentialInput != null)
+				return;
+			System.err.println("-- Text: Start (Type '-- Text: End' to end the text)");
+			String line;
+			final StringBuilder text = new StringBuilder();
+			while (!(line = input("")).equalsIgnoreCase("-- Text: End")) {
+				text.append(line);
+				text.append("\r\n");
+			}
+			context.essentialInput = text.toString();
+		}
+
+		@Override
+		public void getAuxiliaryInput(CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.auxiliaryInput != null)
+				return;
+			String fullPageName = input("as if it were in this page (<API>): ", null);
+
+			context.auxiliaryInput = new Object[] { fullPageName };
+		}
+
+		public void perform(CommandContext context) throws IOException, MediaWikiException, ParseException {
+			String wikitext = (String) context.essentialInput, fullPageName = (String) ((Object[]) context.auxiliaryInput)[0];
+
+			String expansion;
+			work("Expanding templates...");
+			try {
+				expansion = context.wiki.expandTemplatesInWikitext(wikitext, fullPageName);
+			} finally {
+				workEnd();
+			}
+
+			System.out.println(expansion);
+		}
+
+		public void help() throws IOException {
+			System.err.println("Expands templates in wikitext on the current wiki.");
+			System.err.println();
+			System.err.println("expand[templates] [<single-line wikitext>]");
+			System.err.println();
+			System.err.println("The wikitext is mandatory and will be requested (as multi-line input) if not provided.");
 		}
 	}
 

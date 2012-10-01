@@ -3215,6 +3215,78 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
+	// - - - EXPAND TEMPLATES IN WIKITEXT (ACTION=EXPANDTEMPLATES) - - -
+
+	/**
+	 * Expands templates in wikitext on the wiki represented by this
+	 * <tt>MediaWiki</tt>.
+	 * <p>
+	 * Template invocations are generally between <tt>{{</t> and <tt>}}</tt>.
+	 * <p>
+	 * This version of the <code>expandTemplatesInWikitext</code> method may not
+	 * resolve <i>magic words</i> such as <tt>{{PAGENAME}}</tt> and
+	 * <tt>{{FULLPAGENAME}}</tt> correctly. According to the MediaWiki API
+	 * documentation, it acts as if the page were named <code>"API"</code>.
+	 * 
+	 * @param wikitext
+	 *            Wikitext to be expanded, possibly containing template
+	 *            invocations.
+	 * @return the wikitext with templates expanded
+	 * @throws IOException
+	 * @throws MediaWiki.MediaWikiException
+	 * @see #expandTemplatesInWikitext(String, String)
+	 */
+	public String expandTemplatesInWikitext(String wikitext) throws IOException, MediaWiki.MediaWikiException {
+		return expandTemplatesInWikitext(wikitext, null);
+	}
+
+	/**
+	 * Expands templates in wikitext on the wiki represented by this
+	 * <tt>MediaWiki</tt> as if the wikitext were on the given page.
+	 * <p>
+	 * Template invocations are generally between <tt>{{</t> and <tt>}}</tt>.
+	 * <p>
+	 * This version of the <code>expandTemplatesInWikitext</code> method
+	 * resolves <i>magic words</i> such as <tt>{{PAGENAME}}</tt> and
+	 * <tt>{{FULLPAGENAME}}</tt> correctly.
+	 * 
+	 * @param wikitext
+	 *            Wikitext to be expanded, possibly containing template
+	 *            invocations.
+	 * @param fullPageName
+	 *            Act as if the wikitext were on a page with this full name. May
+	 *            be <code>null</code>.
+	 * @return the wikitext with templates expanded
+	 * @throws IOException
+	 * @throws MediaWiki.MediaWikiException
+	 */
+	public String expandTemplatesInWikitext(String wikitext, String fullPageName) throws IOException, MediaWiki.MediaWikiException {
+		if (wikitext.length() <= 4) // {{}}
+			return wikitext; // Cannot contain any templates
+
+		Map<String, String> getParams = paramValuesToMap("action", "expandtemplates", "format", "xml", "text", wikitext, "title", fullPageName);
+
+		String url = createApiGetUrl(getParams);
+
+		networkLock.lock();
+		try {
+			InputStream in = get(url);
+			Document xml = parse(in);
+			checkError(xml);
+
+			NodeList expandtemplatesTags = xml.getElementsByTagName("expandtemplates");
+
+			if (expandtemplatesTags.getLength() > 0) {
+				Element expandtemplatesTag = (Element) expandtemplatesTags.item(0);
+
+				return expandtemplatesTag.getTextContent();
+			} else
+				throw new MediaWiki.ResponseFormatException("expected <expandtemplates> tag not present");
+		} finally {
+			networkLock.unlock();
+		}
+	}
+
 	// - - - EDIT - - -
 
 	/**
