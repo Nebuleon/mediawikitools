@@ -414,6 +414,8 @@ public class ClanExpGainScraper {
 		public static List<ClanMember> getAll(String clan) throws IOException {
 			List<ClanMember> list = new ArrayList<ClanMember>();
 			HttpURLConnection http = (HttpURLConnection) new URL(clanHome + clan).openConnection();
+			http.setConnectTimeout(15000);
+			http.setReadTimeout(30000);
 			BufferedReader inLines = new BufferedReader(new InputStreamReader(http.getInputStream(), "UTF-8"));
 			// Need to Open the Clan home to find the number of members before
 			// running
@@ -430,6 +432,7 @@ public class ClanExpGainScraper {
 					int endIndex = s.indexOf("</span>", beginIndex);
 					s = s.substring(beginIndex + beginStr.length(), endIndex);
 					members = Integer.parseInt(s.trim());
+					break;
 				}
 				s = inLines.readLine();
 			}
@@ -437,10 +440,12 @@ public class ClanExpGainScraper {
 			if (members == -1) {
 				return list;
 			}
-			for (int i = 1; i < (members / PER_PAGE) + 2; i++) {
+			for (int i = 1; i <= (members + PER_PAGE - 1) / PER_PAGE; i++) {
 				// Open a Socket to the Page.
 				String built = String.format(strFormat, i, clan, PER_PAGE);
 				http = (HttpURLConnection) new URL(built).openConnection();
+				http.setConnectTimeout(15000);
+				http.setReadTimeout(30000);
 				inLines = new BufferedReader(new InputStreamReader(http.getInputStream(), "UTF-8"));
 
 				s = inLines.readLine();
