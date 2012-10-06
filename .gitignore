@@ -1,5 +1,8 @@
 *.class
-bin
+bin/
+
+# Eclipse scrapbook pages for quick testing #
+*.jpage
 
 # Package Files #
 *.jar

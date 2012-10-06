@@ -459,6 +459,12 @@ public class WikiShell {
 					pageListModifiers.put(s, r);
 				}
 			}
+			{
+				final NormalizeNames n = new NormalizeNames();
+				for (final String s : Arrays.asList("normalize", "normalise")) {
+					pageListModifiers.put(s, n);
+				}
+			}
 		} finally {
 			workEnd();
 		}
@@ -624,6 +630,151 @@ public class WikiShell {
 			return defaultValue;
 		} else
 			return defaultValue;
+	}
+
+	private static final Pattern magicWordMatcher = Pattern.compile("\\{\\{((?:FULL|BASE|SUB|SUBJECT|ARTICLE|TALK)?PAGENAME(?:E)?)\\}\\}");
+
+	public static String expandInput(CommandContext context, final String input) throws IOException, MediaWiki.MediaWikiException {
+		StringBuffer result = new StringBuffer();
+		Matcher m = magicWordMatcher.matcher(input);
+		if (m.find()) {
+			try {
+				work("Getting namespaces...");
+				MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
+				work(String.format("Normalising '%s'...", context.pageName));
+				String normalized = context.wiki.normalizeTitle(context.pageName);
+				work("Expanding input...");
+				do {
+					if (m.group(1).equals("PAGENAME")) {
+						m.appendReplacement(result, namespaces.removeNamespacePrefix(normalized));
+					} else if (m.group(1).equals("PAGENAMEE")) {
+						m.appendReplacement(result, pagenamee(namespaces.removeNamespacePrefix(normalized)));
+					} else if (m.group(1).equals("FULLPAGENAME")) {
+						m.appendReplacement(result, normalized);
+					} else if (m.group(1).equals("FULLPAGENAMEE")) {
+						m.appendReplacement(result, pagenamee(normalized));
+					} else if (m.group(1).equals("BASEPAGENAME")) {
+						if (namespaces.getNamespaceForPage(normalized).allowsSubpages() && normalized.indexOf('/') != -1) {
+							String noNamespace = namespaces.removeNamespacePrefix(normalized);
+							m.appendReplacement(result, noNamespace.substring(0, noNamespace.indexOf('/')));
+						} else
+							m.appendReplacement(result, "");
+					} else if (m.group(1).equals("BASEPAGENAMEE")) {
+						if (namespaces.getNamespaceForPage(normalized).allowsSubpages() && normalized.indexOf('/') != -1) {
+							String noNamespace = namespaces.removeNamespacePrefix(normalized);
+							m.appendReplacement(result, pagenamee(noNamespace.substring(0, noNamespace.indexOf('/'))));
+						} else
+							m.appendReplacement(result, "");
+					} else if (m.group(1).equals("SUBPAGENAME")) {
+						if (namespaces.getNamespaceForPage(normalized).allowsSubpages() && normalized.indexOf('/') != -1) {
+							m.appendReplacement(result, normalized.substring(normalized.lastIndexOf('/') + 1));
+						} else
+							m.appendReplacement(result, "");
+					} else if (m.group(1).equals("SUBPAGENAMEE")) {
+						if (namespaces.getNamespaceForPage(normalized).allowsSubpages() && normalized.indexOf('/') != -1) {
+							m.appendReplacement(result, pagenamee(normalized.substring(normalized.lastIndexOf('/') + 1)));
+						} else
+							m.appendReplacement(result, "");
+					} else if (m.group(1).equals("SUBJECTPAGENAME") || m.group(1).equals("ARTICLEPAGENAME")) {
+						long namespaceID = namespaces.getNamespaceForPage(normalized).getID();
+						if (namespaceID >= 0) {
+							// Remove the bit that makes the namespace ID odd.
+							MediaWiki.Namespace subjectNamespace = namespaces.getNamespace(namespaceID & ~1);
+							if (subjectNamespace != null)
+								m.appendReplacement(result, subjectNamespace.getFullPageName(namespaces.removeNamespacePrefix(normalized)));
+							else
+								m.appendReplacement(result, "");
+						} else
+							m.appendReplacement(result, "");
+					} else if (m.group(1).equals("SUBJECTPAGENAMEE") || m.group(1).equals("ARTICLEPAGENAMEE")) {
+						long namespaceID = namespaces.getNamespaceForPage(normalized).getID();
+						if (namespaceID >= 0) {
+							// Remove the bit that makes the namespace ID odd.
+							MediaWiki.Namespace subjectNamespace = namespaces.getNamespace(namespaceID & ~1);
+							if (subjectNamespace != null)
+								m.appendReplacement(result, pagenamee(subjectNamespace.getFullPageName(namespaces.removeNamespacePrefix(normalized))));
+							else
+								m.appendReplacement(result, "");
+						} else
+							m.appendReplacement(result, "");
+					} else if (m.group(1).equals("TALKPAGENAME")) {
+						long namespaceID = namespaces.getNamespaceForPage(normalized).getID();
+						if (namespaceID >= 0) {
+							// Add the bit that makes the namespace ID odd.
+							MediaWiki.Namespace talkNamespace = namespaces.getNamespace(namespaceID & 1);
+							if (talkNamespace != null)
+								m.appendReplacement(result, talkNamespace.getFullPageName(namespaces.removeNamespacePrefix(normalized)));
+							else
+								m.appendReplacement(result, "");
+						} else
+							m.appendReplacement(result, "");
+					} else if (m.group(1).equals("TALKPAGENAMEE")) {
+						long namespaceID = namespaces.getNamespaceForPage(normalized).getID();
+						if (namespaceID >= 0) {
+							// Add the bit that makes the namespace ID odd.
+							MediaWiki.Namespace talkNamespace = namespaces.getNamespace(namespaceID & 1);
+							if (talkNamespace != null)
+								m.appendReplacement(result, pagenamee(talkNamespace.getFullPageName(namespaces.removeNamespacePrefix(normalized))));
+							else
+								m.appendReplacement(result, "");
+						} else
+							m.appendReplacement(result, "");
+					}
+				} while (m.find());
+			} finally {
+				workEnd();
+			}
+			m.appendTail(result);
+			return result.toString();
+		} else
+			return input;
+	}
+
+	public static String pagenamee(final String input) {
+		StringBuilder result = new StringBuilder(input.length());
+		for (int i = 0; i < input.length(); i++) {
+			switch (input.charAt(i)) {
+			case ' ':
+				result.append('_');
+				break;
+			case '"':
+				result.append("%22");
+				break;
+			case '%':
+				result.append("%25");
+				break;
+			case '&':
+				result.append("%26");
+				break;
+			case '\'':
+				result.append("%27");
+				break;
+			case '+':
+				result.append("%2B");
+				break;
+			case '=':
+				result.append("%3D");
+				break;
+			case '?':
+				result.append("%3F");
+				break;
+			case '\\':
+				result.append("%5C");
+				break;
+			case '^':
+				result.append("%5E");
+				break;
+			case '`':
+				result.append("%60");
+				break;
+			case '~':
+				result.append("%7E");
+				break;
+			default:
+				result.append(input.charAt(i));
+			}
+		}
+		return result.toString();
 	}
 
 	public static void updateStatus(final MediaWiki wiki) {
@@ -919,7 +1070,7 @@ public class WikiShell {
 		public transient PrintWriter output;
 
 		public CommandContext() {
-			output = new PrintWriter(System.out);
+			output = new PrintWriter(System.out, true /*- auto-flush */);
 		}
 	}
 
@@ -931,7 +1082,7 @@ public class WikiShell {
 		public transient PrintWriter output;
 
 		public PageListModifierContext() {
-			output = new PrintWriter(System.out);
+			output = new PrintWriter(System.out, true /*- auto-flush */);
 		}
 	}
 
@@ -1392,11 +1543,11 @@ public class WikiShell {
 		}
 
 		public void perform(final CommandContext context) throws IOException, MediaWikiException, ParseException {
-			context.output = new LinesWriter(new PrintWriter(System.out));
+			context.output = new LinesWriter(new PrintWriter(System.out, true /*- auto-flush */));
 		}
 
 		public void modify(final List<String> pages, final PageListModifierContext context) throws IOException, NullPointerException, CancellationException {
-			context.output = new LinesWriter(new PrintWriter(System.out));
+			context.output = new LinesWriter(new PrintWriter(System.out, true /*- auto-flush */));
 		}
 
 		public void help() throws IOException {
@@ -2226,7 +2377,7 @@ public class WikiShell {
 			if (context.auxiliaryInput != null)
 				return;
 			final String fullPageName = input("as if it were in this page (<API>): ", null);
-			final String languageCode = input("as if the page was written in this language [language code] (<none>): ", null);
+			final String languageCode = input("as if the page were written in this language [language code] (<none>): ", null);
 
 			context.auxiliaryInput = new Object[] { fullPageName, languageCode };
 		}
@@ -2285,10 +2436,10 @@ public class WikiShell {
 					return;
 
 				while ((c = next(ci)) != null) {
-					System.out.print(" | ");
+					context.output.print(" | ");
 					if (context.output.checkError())
 						return;
-					System.out.print(c.getCategoryBaseName());
+					context.output.print(c.getCategoryBaseName());
 					if (context.output.checkError())
 						return;
 				}
@@ -2666,7 +2817,7 @@ public class WikiShell {
 				return;
 			try {
 				final String dateString = input("as of [y-m-dTh:m:sZ] (<latest>): ", null);
-				final String newName = input("to this new name (<same>): ", null);
+				final String newName = input(String.format("to this new name (relative to %s, <same>): ", System.getProperty("user.dir")), null);
 				context.auxiliaryInput = new Object[] { dateString != null ? MediaWiki.timestampToDate(dateString) : null, newName };
 			} catch (final ParseException e) {
 				System.err.println("Invalid input");
@@ -2687,8 +2838,15 @@ public class WikiShell {
 			final Date timestamp = (Date) auxiliaryInput[0];
 			String newName = (String) auxiliaryInput[1];
 			if (newName == null) {
-				newName = MediaWiki.titleToDisplayForm(context.wiki.getNamespaces().removeNamespacePrefix(context.pageName));
-			}
+				work("Normalising the file name...");
+				try {
+					newName = context.wiki.normalizeTitle(context.wiki.getNamespaces().removeNamespacePrefix(context.pageName));
+				} finally {
+					workEnd();
+				}
+			} else
+				newName = expandInput(context, newName); // magic words!
+
 			work("Getting revision...");
 			try {
 				iri = context.wiki.getImageRevisions(context.pageName, timestamp, timestamp);
@@ -2842,10 +3000,10 @@ public class WikiShell {
 					return;
 
 				while ((c = next(ci)) != null) {
-					System.out.print(" | ");
+					context.output.print(" | ");
 					if (context.output.checkError())
 						return;
-					System.out.print(c.getCategoryBaseName());
+					context.output.print(c.getCategoryBaseName());
 					if (context.output.checkError())
 						return;
 				}
@@ -4197,7 +4355,8 @@ public class WikiShell {
 
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
-			final String newFullName = (String) context.essentialInput, moveReason = (String) auxiliaryInput[0];
+			final String newFullName = expandInput(context, (String) context.essentialInput);
+			String moveReason = (String) auxiliaryInput[0];
 			final boolean suppressRedirect = (Boolean) auxiliaryInput[1], moveTalk = (Boolean) auxiliaryInput[2], moveSubpages = (Boolean) auxiliaryInput[3];
 			final MediaWiki.EditToken token = (MediaWiki.EditToken) context.token;
 
@@ -4261,7 +4420,7 @@ public class WikiShell {
 			}
 
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
-			final String localName = (String) context.essentialInput, uploadComment = (String) auxiliaryInput[0], pageText = (String) auxiliaryInput[1];
+			final String localName = expandInput(context, (String) context.essentialInput), uploadComment = (String) auxiliaryInput[0], pageText = (String) auxiliaryInput[1];
 			final MediaWiki.EditToken token = (MediaWiki.EditToken) context.token;
 
 			work("Performing upload...");
@@ -5381,6 +5540,38 @@ public class WikiShell {
 			System.err.println("intersect <command> [<arguments>]");
 			System.err.println();
 			System.err.println("Only pages present in both the list returned by the command and the list used by the current 'for' subshell will be kept.");
+		}
+	}
+
+	public static class NormalizeNames implements PageListModifier {
+		public void modify(final List<String> pages, final PageListModifierContext context) throws IOException, NullPointerException, CancellationException {
+			while (true) /*- retry loop */{
+				try {
+					work("Normalising page names...");
+
+					try {
+						context.wiki.normalizeTitles(pages);
+					} finally {
+						workEnd();
+					}
+
+					break; // on success
+				} catch (final MediaWiki.MediaWikiException e) {
+					System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+					if (!inputBoolean("Retry? [Y/n] ", true))
+						return;
+				} catch (final IOException e) {
+					System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+					if (!inputBoolean("Retry? [Y/n] ", true))
+						return;
+				}
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Normalise the names of pages used by the current 'for' subshell.");
+			System.err.println();
+			System.err.println("normali{s | z}e");
 		}
 	}
 

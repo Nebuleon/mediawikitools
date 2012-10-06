@@ -3221,7 +3221,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * Expands templates in wikitext on the wiki represented by this
 	 * <tt>MediaWiki</tt>.
 	 * <p>
-	 * Template invocations are generally between <tt>{{</t> and <tt>}}</tt>.
+	 * Template invocations are generally between <tt>{{</tt> and <tt>}}</tt>.
 	 * <p>
 	 * This version of the <code>expandTemplatesInWikitext</code> method may not
 	 * resolve <i>magic words</i> such as <tt>{{PAGENAME}}</tt> and
@@ -3244,7 +3244,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * Expands templates in wikitext on the wiki represented by this
 	 * <tt>MediaWiki</tt> as if the wikitext were on the given page.
 	 * <p>
-	 * Template invocations are generally between <tt>{{</t> and <tt>}}</tt>.
+	 * Template invocations are generally between <tt>{{</tt> and <tt>}}</tt>.
 	 * <p>
 	 * This version of the <code>expandTemplatesInWikitext</code> method
 	 * resolves <i>magic words</i> such as <tt>{{PAGENAME}}</tt> and
@@ -4911,9 +4911,9 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 
 		/**
-		 * Returns the canonical name of this <tt>Namespace</t>.
+		 * Returns the canonical name of this <tt>Namespace</tt>.
 		 * 
-		 * @return the canonical name of this <tt>Namespace</t>
+		 * @return the canonical name of this <tt>Namespace</tt>
 		 */
 		public String getCanonicalName() {
 			return canonicalName;
@@ -5247,10 +5247,10 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		/**
 		 * Returns the language of the wiki targetted by this
-		 * <tt>InterwikiPrefix</t>.
+		 * <tt>InterwikiPrefix</tt>.
 		 * 
 		 * @return the language of the wiki targetted by this
-		 *         <tt>InterwikiPrefix</t>
+		 *         <tt>InterwikiPrefix</tt>
 		 */
 		public String getLanguage() {
 			return language;
@@ -7237,6 +7237,130 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			return iso8601TimestampParser.parse(timestamp);
 		else
 			return timestampFormatter.parse(timestamp);
+	}
+
+	/**
+	 * Normalises the given <code>title</code> according to the rules in place
+	 * on the wiki represented by this <tt>MediaWiki</tt>.
+	 * 
+	 * @param title
+	 *            Title to normalise.
+	 * @return the normalised title
+	 * @throws IOException
+	 * @throws MediaWikiException
+	 */
+	public String normalizeTitle(final String title) throws IOException, MediaWikiException {
+		final Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "info", "titles", title);
+		final String url = createApiGetUrl(getParams);
+
+		networkLock.lock();
+		try {
+			final InputStream in = get(url);
+			Document xml = parse(in);
+			checkError(xml);
+
+			final NodeList normalizedTags = xml.getElementsByTagName("normalized");
+
+			final Map<String, String> normalizations = new TreeMap<String, String>();
+
+			for (int i = 0; i < normalizedTags.getLength(); i++) {
+				Element normalizedTag = (Element) normalizedTags.item(i);
+
+				NodeList nTags = normalizedTag.getElementsByTagName("n");
+
+				for (int j = 0; j < nTags.getLength(); j++) {
+					Element nTag = (Element) nTags.item(i);
+
+					normalizations.put(nTag.getAttribute("from"), nTag.getAttribute("to"));
+				}
+			}
+
+			return normalizations.containsKey(title) ? normalizations.get(title) : title;
+		} finally {
+			networkLock.unlock();
+		}
+	}
+
+	/**
+	 * Normalises the given <code>titles</code> according to the rules in place
+	 * on the wiki represented by this <tt>MediaWiki</tt>.
+	 * 
+	 * @param titles
+	 *            Titles to normalise. The members of this list are modified
+	 *            in-place.
+	 * @return <code>titles</code>
+	 * @throws IOException
+	 * @throws MediaWikiException
+	 */
+	public List<String> normalizeTitles(final List<String> titles) throws IOException, MediaWikiException {
+		if (titles.isEmpty())
+			return titles;
+
+		int index = 0, max = Math.min(titles.size(), 500);
+
+		while (index < titles.size()) {
+			int end = Math.min(index + max, titles.size());
+
+			StringBuilder titleString = new StringBuilder((end - index) * 2);
+			for (int i = index; i < end; i++) {
+				if (titleString.length() > 0)
+					titleString.append('|');
+				titleString.append(titles.get(i));
+			}
+
+			final Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "info", "titles", titleString.toString());
+			final String url = createApiGetUrl(getParams);
+
+			networkLock.lock();
+			try {
+				final InputStream in = get(url);
+				Document xml = parse(in);
+				checkError(xml);
+
+				final NodeList normalizedTags = xml.getElementsByTagName("normalized");
+
+				if (normalizedTags.getLength() == 0)
+					throw new MediaWiki.ResponseFormatException("expected <normalized> tag not found");
+				if (normalizedTags.getLength() >= 2)
+					throw new MediaWiki.ResponseFormatException("more than one <normalized> tag found");
+
+				final Map<String, String> normalizations = new TreeMap<String, String>();
+
+				Element normalizedTag = (Element) normalizedTags.item(0);
+
+				NodeList nTags = normalizedTag.getElementsByTagName("n");
+
+				for (int j = 0; j < nTags.getLength(); j++) {
+					Element nTag = (Element) nTags.item(j);
+
+					normalizations.put(nTag.getAttribute("from"), nTag.getAttribute("to"));
+				}
+
+				for (int i = index; i < end; i++) {
+					if (normalizations.containsKey(titles.get(i)))
+						titles.set(i, normalizations.get(titles.get(i)));
+				}
+
+				final NodeList pagesTags = xml.getElementsByTagName("pages");
+
+				if (pagesTags.getLength() == 0)
+					throw new MediaWiki.ResponseFormatException("expected <pages> tag not found");
+				if (pagesTags.getLength() >= 2)
+					throw new MediaWiki.ResponseFormatException("more than one <pages> tag found");
+
+				Element pagesTag = (Element) pagesTags.item(0);
+
+				NodeList pageTags = pagesTag.getElementsByTagName("page");
+
+				max = pageTags.getLength();
+
+				index += max;
+			} finally {
+				networkLock.unlock();
+			}
+		}
+
+		return titles;
 	}
 
 	/**
