@@ -62,7 +62,7 @@ import org.xml.sax.SAXException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class MediaWiki implements Serializable, ObjectInputValidation {
-	// TODO Add parse-wikitext and parse-pagetext
+	// TODO Add parse-pagetext
 	// TODO Add block/unblock
 	// TODO Add undelete
 	// TODO Add watch-add/watch-del/watch-list/watch-newedits
@@ -3287,6 +3287,164 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
+	// - - - PARSE WIKITEXT (ACTION=PARSE) - - -
+
+	/**
+	 * Parses wikitext to HTML on the wiki represented by this
+	 * <tt>MediaWiki</tt>.
+	 * <p>
+	 * This method resolves <i>magic words</i> such as <tt>{{PAGENAME}}</tt> and
+	 * <tt>{{FULLPAGENAME}}</tt> correctly.
+	 * 
+	 * @param wikitext
+	 *            Wikitext to be parsed.
+	 * @param fullPageName
+	 *            Act as if the wikitext were on a page with this full name. May
+	 *            be <code>null</code>, in which case, according to the
+	 *            MediaWiki API documentation, it acts as if the page were named
+	 *            <code>"API"</code>.
+	 * @param preSaveTransform
+	 *            If this parameter is <code>true</code>, requests a pre-save
+	 *            transform, which expands <tt>{{subst:}}</tt> template
+	 *            invocations, signatures and timestamps (<tt>~~~</tt>,
+	 *            <tt>~~~~</tt>, <tt>~~~~~</tt>).
+	 * @param languageCode
+	 *            Code of the language used to parse the page. Usually not
+	 *            needed, except on pages that use the value of
+	 *            <tt>{{int:Lang}}</tt>. May be <code>null</code>.
+	 * @return an object representing the result of parsing the given
+	 *         <code>wikitext</code>
+	 * @throws IOException
+	 * @throws MediaWiki.MediaWikiException
+	 */
+	public MediaWiki.ParseResult parseWikitext(String wikitext, String fullPageName, boolean preSaveTransform, String languageCode) throws IOException, MediaWiki.MediaWikiException {
+		Map<String, String> getParams = paramValuesToMap("action", "parse", "format", "xml", "text", wikitext, "title", fullPageName, "uselang", languageCode);
+		if (preSaveTransform)
+			getParams.put("pst", "true");
+
+		String url = createApiGetUrl(getParams);
+
+		networkLock.lock();
+		try {
+			InputStream in = get(url);
+			Document xml = parse(in);
+			checkError(xml);
+
+			NodeList parseTags = xml.getElementsByTagName("parse");
+
+			if (parseTags.getLength() > 0) {
+				Element parseTag = (Element) parseTags.item(0);
+
+				String text = null;
+				List<MediaWiki.InterlanguageLink> langLinks = new ArrayList<MediaWiki.InterlanguageLink>();
+				List<MediaWiki.CategoryMembership> categoryMemberships = new ArrayList<MediaWiki.CategoryMembership>();
+				List<MediaWiki.Link> internalLinks = new ArrayList<MediaWiki.Link>();
+				List<MediaWiki.Link> transclusionsInWikitext = new ArrayList<MediaWiki.Link>();
+				List<MediaWiki.Link> images = new ArrayList<MediaWiki.Link>();
+				List<String> externalLinks = new ArrayList<String>();
+
+				NodeList textTags = parseTag.getElementsByTagName("text");
+				if (textTags.getLength() > 0) {
+					Element textTag = (Element) textTags.item(0);
+
+					text = textTag.getTextContent();
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <text> tag not present");
+
+				NodeList langlinksTags = parseTag.getElementsByTagName("langlinks");
+				if (langlinksTags.getLength() > 0) {
+					Element langlinksTag = (Element) langlinksTags.item(0);
+
+					NodeList llTags = langlinksTag.getElementsByTagName("ll");
+
+					for (int i = 0; i < llTags.getLength(); i++) {
+						Element llTag = (Element) llTags.item(i);
+
+						langLinks.add(new MediaWiki.InterlanguageLink(llTag.getAttribute("lang"), llTag.getTextContent()));
+					}
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <langlinks> tag not present");
+
+				NodeList categoriesTags = parseTag.getElementsByTagName("categories");
+				if (categoriesTags.getLength() > 0) {
+					Element categoriesTag = (Element) categoriesTags.item(0);
+
+					NodeList clTags = categoriesTag.getElementsByTagName("cl");
+
+					for (int i = 0; i < clTags.getLength(); i++) {
+						Element clTag = (Element) clTags.item(i);
+
+						categoryMemberships.add(new MediaWiki.CategoryMembership(clTag.getTextContent(), clTag.getAttribute("sortkey")));
+					}
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <categories> tag not present");
+
+				NodeList linksTags = parseTag.getElementsByTagName("links");
+				if (linksTags.getLength() > 0) {
+					Element linksTag = (Element) linksTags.item(0);
+
+					NodeList plTags = linksTag.getElementsByTagName("pl");
+
+					for (int i = 0; i < plTags.getLength(); i++) {
+						Element plTag = (Element) plTags.item(i);
+
+						internalLinks.add(new Link(Long.parseLong(plTag.getAttribute("ns")), plTag.getTextContent()));
+					}
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <links> tag not present");
+
+				NodeList templatesTags = parseTag.getElementsByTagName("templates");
+				if (templatesTags.getLength() > 0) {
+					Element templatesTag = (Element) templatesTags.item(0);
+
+					NodeList tlTags = templatesTag.getElementsByTagName("tl");
+
+					for (int i = 0; i < tlTags.getLength(); i++) {
+						Element tlTag = (Element) tlTags.item(i);
+
+						transclusionsInWikitext.add(new Link(Long.parseLong(tlTag.getAttribute("ns")), tlTag.getTextContent()));
+					}
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <templates> tag not present");
+
+				NodeList imagesTags = parseTag.getElementsByTagName("images");
+				if (imagesTags.getLength() > 0) {
+					Element imagesTag = (Element) imagesTags.item(0);
+
+					NodeList imgTags = imagesTag.getElementsByTagName("img");
+
+					for (int i = 0; i < imgTags.getLength(); i++) {
+						Element imgTag = (Element) imgTags.item(i);
+
+						images.add(new MediaWiki.Link(MediaWiki.StandardNamespace.FILE, getNamespaces().getNamespace(MediaWiki.StandardNamespace.FILE).getFullPageName(imgTag.getTextContent())));
+					}
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <images> tag not present");
+
+				NodeList externallinksTags = parseTag.getElementsByTagName("externallinks");
+				if (externallinksTags.getLength() > 0) {
+					Element externallinksTag = (Element) externallinksTags.item(0);
+
+					NodeList elTags = externallinksTag.getElementsByTagName("el");
+
+					for (int i = 0; i < elTags.getLength(); i++) {
+						Element elTag = (Element) elTags.item(i);
+
+						externalLinks.add(elTag.getTextContent());
+					}
+				} else
+					throw new MediaWiki.ResponseFormatException("expected <externallinks> tag not present");
+
+				// TODO Sections in wikitext
+
+				return new MediaWiki.ParseResult(text, langLinks, categoryMemberships, internalLinks, transclusionsInWikitext, images, externalLinks);
+			} else
+				throw new MediaWiki.ResponseFormatException("expected <parse> tag not present");
+		} finally {
+			networkLock.unlock();
+		}
+	}
+
 	// - - - EDIT - - -
 
 	/**
@@ -6364,6 +6522,116 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		@Override
 		public String toString() {
 			return String.format("Category[\"%s\", entries: %d, pages: %d, files: %d, subcategories: %d]", getFullPageName(), entries, pages, files, subcategories);
+		}
+	}
+
+	public static class ParseResult {
+		private final String text;
+
+		private final List<MediaWiki.InterlanguageLink> interlanguageLinks;
+
+		private final List<MediaWiki.CategoryMembership> categoryMemberships;
+
+		private final List<MediaWiki.Link> pageLinks;
+
+		private final List<MediaWiki.Link> transclusions;
+
+		private final List<MediaWiki.Link> images;
+
+		private final List<String> externalLinks;
+
+		ParseResult(final String text, final List<MediaWiki.InterlanguageLink> interlanguageLinks, final List<MediaWiki.CategoryMembership> categoryMemberships, final List<MediaWiki.Link> pageLinks, final List<MediaWiki.Link> transclusions, final List<MediaWiki.Link> images, final List<String> externalLinks) {
+			this.text = text;
+			this.interlanguageLinks = interlanguageLinks != null ? Collections.unmodifiableList(interlanguageLinks) : null;
+			this.categoryMemberships = categoryMemberships != null ? Collections.unmodifiableList(categoryMemberships) : null;
+			this.pageLinks = pageLinks != null ? Collections.unmodifiableList(pageLinks) : null;
+			this.transclusions = transclusions != null ? Collections.unmodifiableList(transclusions) : null;
+			this.images = images != null ? Collections.unmodifiableList(images) : null;
+			this.externalLinks = externalLinks != null ? Collections.unmodifiableList(externalLinks) : null;
+		}
+
+		/**
+		 * Returns the HTML parsed version of the wikitext for which this
+		 * <tt>ParseResult</tt> was created.
+		 * 
+		 * @return the HTML parsed version of the wikitext for which this
+		 *         <tt>ParseResult</tt> was created
+		 */
+		public String getText() {
+			return text;
+		}
+
+		/**
+		 * Returns the list of interlanguage links contained in the wikitext for
+		 * which this <tt>ParseResult</tt> was created. The returned list is not
+		 * modifiable.
+		 * 
+		 * @return the list of interlanguage links contained in the wikitext for
+		 *         which this <tt>ParseResult</tt> was created
+		 */
+		public List<MediaWiki.InterlanguageLink> getInterlanguageLinks() {
+			return interlanguageLinks;
+		}
+
+		/**
+		 * Returns the list of categorisations contained in the wikitext for
+		 * which this <tt>ParseResult</tt> was created. The returned list is not
+		 * modifiable.
+		 * 
+		 * @return the list of categorisations contained in the wikitext for
+		 *         which this <tt>ParseResult</tt> was created
+		 */
+		public List<MediaWiki.CategoryMembership> getCategoryMemberships() {
+			return categoryMemberships;
+		}
+
+		/**
+		 * Returns the list of links pointing to pages on the same wiki
+		 * contained in the wikitext for which this <tt>ParseResult</tt> was
+		 * created. The returned list is not modifiable.
+		 * 
+		 * @return the list of links pointing to pages on the same wiki
+		 *         contained in the wikitext for which this <tt>ParseResult</tt>
+		 *         was created
+		 */
+		public List<MediaWiki.Link> getPageLinks() {
+			return pageLinks;
+		}
+
+		/**
+		 * Returns the list of transclusions contained in the wikitext for which
+		 * this <tt>ParseResult</tt> was created. The returned list is not
+		 * modifiable.
+		 * 
+		 * @return the list of transclusions contained in the wikitext for which
+		 *         this <tt>ParseResult</tt> was created
+		 */
+		public List<MediaWiki.Link> getTransclusions() {
+			return transclusions;
+		}
+
+		/**
+		 * Returns the list of images used in the wikitext for which this
+		 * <tt>ParseResult</tt> was created. The returned list is not
+		 * modifiable.
+		 * 
+		 * @return the list of images used in the wikitext for which this
+		 *         <tt>ParseResult</tt> was created
+		 */
+		public List<MediaWiki.Link> getImages() {
+			return images;
+		}
+
+		/**
+		 * Returns the list of Web links contained in the wikitext for which
+		 * this <tt>ParseResult</tt> was created. The returned list is not
+		 * modifiable.
+		 * 
+		 * @return the list of Web links contained in the wikitext for which
+		 *         this <tt>ParseResult</tt> was created
+		 */
+		public List<String> getExternalLinks() {
+			return externalLinks;
 		}
 	}
 

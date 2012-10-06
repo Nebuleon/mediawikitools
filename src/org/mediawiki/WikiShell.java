@@ -237,6 +237,7 @@ public class WikiShell {
 					builtinCommands.put(s, n);
 				}
 			}
+			builtinCommands.put("parse", new Parse());
 			{
 				final SpecialPages p = new SpecialPages();
 				for (final String s : Arrays.asList("specialpages", "specialpage", "specials", "special")) {
@@ -543,6 +544,14 @@ public class WikiShell {
 		} catch (final IOException e) {
 			e.printStackTrace();
 		} finally {
+			try {
+				// Avoid saving empty files if we got to the finally through
+				// Ctrl+C/SIGTERM.
+				Runtime.getRuntime().removeShutdownHook(new Thread());
+			} catch (IllegalStateException ise) {
+				System.err.println("Java VM shutting down");
+				return;
+			}
 			// Save the current MediaWiki to disk to be restored when the
 			// application next starts.
 			work("Saving wiki information to disk...");
@@ -588,6 +597,21 @@ public class WikiShell {
 
 	public static Boolean inputBoolean(final String prompt, final Boolean defaultValue) throws IOException, NullPointerException, CancellationException {
 		return inputBoolean(prompt, 'y', 'n', defaultValue);
+	}
+
+	public static String inputMultiline() throws IOException, NullPointerException, CancellationException {
+		return inputMultiline("-- Text: Start (Type '-- Text: End' to end the text)", "-- Text: End");
+	}
+
+	public static String inputMultiline(String prompt, String endText) throws IOException, NullPointerException, CancellationException {
+		System.err.println(prompt);
+		String line;
+		final StringBuilder text = new StringBuilder();
+		while (!(line = input("")).equalsIgnoreCase(endText)) {
+			text.append(line);
+			text.append("\r\n");
+		}
+		return text.toString();
 	}
 
 	public static Boolean inputBoolean(final String prompt, final char yes, final char no, final Boolean defaultValue) throws IOException, NullPointerException, CancellationException {
@@ -2188,6 +2212,128 @@ public class WikiShell {
 		}
 	}
 
+	public static class Parse extends AbstractCommand {
+		@Override
+		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.essentialInput != null)
+				return;
+			String text = inputMultiline();
+			context.essentialInput = text;
+		}
+
+		@Override
+		public void getAuxiliaryInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.auxiliaryInput != null)
+				return;
+			final String fullPageName = input("as if it were in this page (<API>): ", null);
+			final String languageCode = input("as if the page was written in this language [language code] (<none>): ", null);
+
+			context.auxiliaryInput = new Object[] { fullPageName, languageCode };
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+			final String text = (String) context.essentialInput;
+			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+			final String fullPageName = (String) auxiliaryInput[0], languageCode = (String) auxiliaryInput[1];
+
+			MediaWiki.ParseResult result;
+
+			work("Parsing...");
+			try {
+				result = context.wiki.parseWikitext(text, fullPageName, true /*- preSaveTransform */, languageCode);
+			} finally {
+				workEnd();
+			}
+
+			context.output.println("-- HTML text: Start");
+			if (context.output.checkError())
+				return;
+			context.output.println(result.getText());
+			if (context.output.checkError())
+				return;
+			context.output.println("-- HTML text: End");
+			if (context.output.checkError())
+				return;
+
+			context.output.println("Links to pages on this wiki" + (result.getPageLinks().isEmpty() ? " (none)" : ":"));
+			if (context.output.checkError())
+				return;
+			for (MediaWiki.Link l : result.getPageLinks()) {
+				context.output.println(l.getFullPageName());
+				if (context.output.checkError())
+					return;
+			}
+
+			context.output.println("Images used" + (result.getImages().isEmpty() ? " (none)" : ":"));
+			if (context.output.checkError())
+				return;
+			for (MediaWiki.Link l : result.getImages()) {
+				context.output.println(l.getFullPageName());
+				if (context.output.checkError())
+					return;
+			}
+
+			context.output.println("Member of categories" + (result.getCategoryMemberships().isEmpty() ? " (none)" : ":"));
+			if (context.output.checkError())
+				return;
+			Iterator<MediaWiki.CategoryMembership> ci = result.getCategoryMemberships().iterator();
+
+			MediaWiki.CategoryMembership c = next(ci);
+			if (c != null) {
+				context.output.print(c.getCategoryBaseName());
+				if (context.output.checkError())
+					return;
+
+				while ((c = next(ci)) != null) {
+					System.out.print(" | ");
+					if (context.output.checkError())
+						return;
+					System.out.print(c.getCategoryBaseName());
+					if (context.output.checkError())
+						return;
+				}
+				context.output.println();
+				if (context.output.checkError())
+					return;
+			}
+
+			context.output.println("Transclusions of templates on this wiki" + (result.getTransclusions().isEmpty() ? " (none)" : ":"));
+			if (context.output.checkError())
+				return;
+			for (MediaWiki.Link l : result.getTransclusions()) {
+				context.output.println(l.getFullPageName());
+				if (context.output.checkError())
+					return;
+			}
+
+			context.output.println("Interlanguage links" + (result.getInterlanguageLinks().isEmpty() ? " (none)" : ":"));
+			if (context.output.checkError())
+				return;
+			for (MediaWiki.InterlanguageLink l : result.getInterlanguageLinks()) {
+				context.output.println(l.getURL());
+				if (context.output.checkError())
+					return;
+			}
+
+			context.output.println("Web links" + (result.getTransclusions().isEmpty() ? " (none)" : ":"));
+			if (context.output.checkError())
+				return;
+			for (String s : result.getExternalLinks()) {
+				context.output.println(s);
+				if (context.output.checkError())
+					return;
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Parses wikitext to HTML on the current wiki.");
+			System.err.println();
+			System.err.println("parse");
+			System.err.println();
+			System.err.println("You will be asked to provide the wikitext to be parsed, followed by the full name of the page on which it would appear and the language code to be used.");
+		}
+	}
+
 	public static class SpecialPages extends AbstractPageReadCommand {
 		@Override
 		public void getPageName(final CommandContext context) throws IOException, NullPointerException, CancellationException {
@@ -3365,14 +3511,7 @@ public class WikiShell {
 		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
 			if (context.essentialInput != null)
 				return;
-			System.err.println("-- Text: Start (Type '-- Text: End' to end the text)");
-			String line;
-			final StringBuilder text = new StringBuilder();
-			while (!(line = input("")).equalsIgnoreCase("-- Text: End")) {
-				text.append(line);
-				text.append("\r\n");
-			}
-			context.essentialInput = text.toString();
+			context.essentialInput = inputMultiline();
 		}
 
 		@Override
@@ -3509,14 +3648,8 @@ public class WikiShell {
 				return;
 			final String heading = input("heading (<none>): ");
 
-			System.err.println("-- Section: Start (Type '-- Section: End' to end the text)");
-			String line;
-			final StringBuilder text = new StringBuilder();
-			while (!(line = input("")).equalsIgnoreCase("-- Section: End")) {
-				text.append(line);
-				text.append("\r\n");
-			}
-			context.essentialInput = new Object[] { heading, text.toString() };
+			String text = inputMultiline("-- Section: Start (Type '-- Section: End' to end the text)", "-- Section: End");
+			context.essentialInput = new Object[] { heading, text };
 		}
 
 		@Override
@@ -3885,14 +4018,7 @@ public class WikiShell {
 		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
 			if (context.essentialInput != null)
 				return;
-			System.err.println("-- Text: Start (Type '-- Text: End' to end the text)");
-			String line;
-			final StringBuilder text = new StringBuilder();
-			while (!(line = input("")).equalsIgnoreCase("-- Text: End")) {
-				text.append(line);
-				text.append("\r\n");
-			}
-			context.essentialInput = text.toString();
+			context.essentialInput = inputMultiline();
 		}
 
 		@Override
@@ -4121,14 +4247,7 @@ public class WikiShell {
 
 			final String uploadComment = input("upload comment (<none>): ", null);
 			if (inputBoolean("type something else for the file description page if new? [y/N] ", false)) {
-				System.err.println("-- Text: Start (Type '-- Text: End' to end the text)");
-				String line;
-				final StringBuilder text = new StringBuilder();
-				while (!(line = input("")).equalsIgnoreCase("-- Text: End")) {
-					text.append(line);
-					text.append("\r\n");
-				}
-				pageText = text.toString();
+				pageText = inputMultiline();
 			}
 
 			context.auxiliaryInput = new Object[] { uploadComment, pageText };
