@@ -5202,7 +5202,7 @@ public class WikiShell {
 								// more input would be requested, ask for
 								// confirmation that the input applies correctly
 								// to the rest of the pages.
-								if ((!requestsEssentialInput || repeatEssentialInput) && (!requestsAuxiliaryInput || repeatAuxiliaryInput) && !requestsConfirmation) {
+								if (pageNames.size() > 1 && (!requestsEssentialInput || repeatEssentialInput) && (!requestsAuxiliaryInput || repeatAuxiliaryInput) && !requestsConfirmation) {
 									if (!requestsEssentialInput && !requestsAuxiliaryInput && !requestsConfirmation) {
 										if (!inputBoolean(String.format("Is it OK to continue with %d more pages? [y/N] ", pageNames.size() - 1), false)) {
 											continue prompt;
