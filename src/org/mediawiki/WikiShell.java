@@ -4512,7 +4512,7 @@ public class WikiShell {
 			if (context.auxiliaryInput != null)
 				return;
 			final String undoComment = input("undo comment (<none>): ", null);
-			final Boolean minor = inputBoolean("minor edit [y/n] (<per Special:Preferences>: ", null);
+			final Boolean minor = inputBoolean("minor edit [y/n] (<per Special:Preferences>): ", null);
 
 			context.auxiliaryInput = new Object[] { undoComment, minor };
 		}
