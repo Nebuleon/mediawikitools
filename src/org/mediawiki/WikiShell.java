@@ -3772,7 +3772,7 @@ public class WikiShell {
 			builtinCommand.getAuxiliaryInput(storedContext);
 			if (storedContext.auxiliaryInput != null) {
 				if (!inputBoolean(String.format(requestsEssentialInput ? "Preset these additional settings into '%s'? [y/N] " : "Preset these settings into '%s'? [y/N] ", presetCommandName), false)) {
-					storedContext.essentialInput = null;
+					storedContext.auxiliaryInput = null;
 				}
 			}
 
