@@ -845,7 +845,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		final Map<String, String> getParams = paramValuesToMap("action", "query", "format", "xml", "meta", "siteinfo", "siprop", "specialpagealiases");
 		final String url = createApiGetUrl(getParams);
 
-		final Map<String, String> result = new HashMap<String, String>();
+		final Map<String, String> result = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
 
 		networkLock.lock();
 		try {
