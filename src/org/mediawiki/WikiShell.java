@@ -2504,12 +2504,14 @@ public class WikiShell {
 					System.err.println(String.format("Note: Page name changed to %s", context.pageName));
 				}
 
+				context.pageName = namespaces.removeNamespacePrefix(context.pageName);
+
 				final String specialPage = specialPageAliases.get(context.pageName);
 				if (specialPage != null) {
 					if (specialPage.equals(context.pageName)) {
 						context.output.println(String.format("%s is a valid special page", context.pageName));
 					} else {
-						context.output.println(String.format("%1$s is an alias of %2$s", context.pageName, specialPage));
+						context.output.println(String.format("%1$s is an alias of %3$s:%2$s", context.pageName, specialPage, namespaces.getNamespace(MediaWiki.StandardNamespace.SPECIAL).getCanonicalName()));
 					}
 				} else {
 					System.err.println(context.pageName + ": No such special page");
