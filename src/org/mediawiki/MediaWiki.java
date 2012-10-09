@@ -44,6 +44,7 @@ import javax.xml.parsers.ParserConfigurationException;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
@@ -62,6 +63,7 @@ import org.xml.sax.SAXException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class MediaWiki implements Serializable, ObjectInputValidation {
+	// TODO Add processContinuation to MultipleRevisionIterator
 	// TODO Add parse-pagetext
 	// TODO Add block/unblock
 	// TODO Add undelete
@@ -1636,7 +1638,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("clcontinue", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -1656,7 +1658,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					}
 				}
 
-				processContinuation(xml, "categories", "clcontinue");
+				processContinuation(xml, "categories");
 			} finally {
 				networkLock.unlock();
 			}
@@ -1785,7 +1787,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("cmcontinue", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -1803,7 +1805,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					setUpcoming(categorymembersTag.getElementsByTagName("cm"));
 				}
 
-				processContinuation(xml, "categorymembers", "cmcontinue");
+				processContinuation(xml, "categorymembers");
 			} finally {
 				networkLock.unlock();
 			}
@@ -1890,7 +1892,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			 * after 'end' chronologically because it returns image revisions
 			 * from the newest to the oldest, so they are reversed below.
 			 */
-			super(latest);
+			super("iistart", latest);
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "imageinfo", "titles", titleToAPIForm(element), "iiprop", "timestamp|user|comment|url|size|sha1|mime", "iilimit", "max");
 			getParams.put("iiend", earliest);
 		}
@@ -1914,7 +1916,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("iistart", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -1939,7 +1941,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					}
 				}
 
-				processContinuation(xml, "imageinfo", "iistart");
+				processContinuation(xml, "imageinfo");
 			} finally {
 				networkLock.unlock();
 			}
@@ -1991,7 +1993,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("llcontinue", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2011,7 +2013,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					}
 				}
 
-				processContinuation(xml, "langlinks", "llcontinue");
+				processContinuation(xml, "langlinks");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2068,7 +2070,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("plcontinue", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2088,7 +2090,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					}
 				}
 
-				processContinuation(xml, "links", "plcontinue");
+				processContinuation(xml, "links");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2149,7 +2151,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("tlcontinue", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2169,7 +2171,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					}
 				}
 
-				processContinuation(xml, "templates", "tlcontinue");
+				processContinuation(xml, "templates");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2235,7 +2237,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("eicontinue", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2253,7 +2255,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					setUpcoming(embeddedinTag.getElementsByTagName("ei"));
 				}
 
-				processContinuation(xml, "embeddedin", "eicontinue");
+				processContinuation(xml, "embeddedin");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2319,7 +2321,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("iucontinue", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2337,7 +2339,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					setUpcoming(imageusageTag.getElementsByTagName("iu"));
 				}
 
-				processContinuation(xml, "imageusage", "iucontinue");
+				processContinuation(xml, "imageusage");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2410,7 +2412,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("blcontinue", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2428,7 +2430,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					setUpcoming(backlinksTag.getElementsByTagName("bl"));
 				}
 
-				processContinuation(xml, "backlinks", "blcontinue");
+				processContinuation(xml, "backlinks");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2478,7 +2480,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("eloffset", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2498,7 +2500,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					}
 				}
 
-				processContinuation(xml, "extlinks", "eloffset");
+				processContinuation(xml, "extlinks");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2651,7 +2653,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		private final Map<String, String> getParams;
 
 		AllCategoriesIterator(final String first, final String last, final String prefix, final boolean ascendingOrder, final Long minimumEntries, final Long maximumEntries) {
-			super(first /* can also be null */);
+			super("acfrom", first /* can also be null */);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allcategories", "aclimit", "max", "acprop", "size", "acdir", ascendingOrder ? "ascending" : "descending");
 
@@ -2682,7 +2684,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("acfrom", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2700,7 +2702,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					setUpcoming(allcategoriesTag.getElementsByTagName("c"));
 				}
 
-				processContinuation(xml, "allcategories", "acfrom");
+				processContinuation(xml, "allcategories");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2754,7 +2756,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		private final Map<String, String> getParams;
 
 		AllImagesIterator(final String first, final String prefix, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
-			super(first /* can also be null */);
+			super("aifrom", first /* can also be null */);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allimages", "ailimit", "max", "aiprop", "timestamp|user|comment|url|size|sha1|mime", "aidir", ascendingOrder ? "ascending" : "descending");
 
@@ -2788,7 +2790,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("aifrom", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2806,7 +2808,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					setUpcoming(allimagesTag.getElementsByTagName("img"));
 				}
 
-				processContinuation(xml, "allimages", "aifrom");
+				processContinuation(xml, "allimages");
 			} finally {
 				networkLock.unlock();
 			}
@@ -2883,7 +2885,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		private final Map<String, String> getParams;
 
 		AllPagesIterator(final String first, final String prefix, final long namespaceID, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
-			super(first /* can also be null */);
+			super("apfrom", first /* can also be null */);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allpages", "aplimit", "max", "apnamespace", Long.toString(namespaceID), "apdir", ascendingOrder ? "ascending" : "descending");
 
@@ -2917,7 +2919,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("apfrom", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -2935,7 +2937,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					setUpcoming(allpagesTag.getElementsByTagName("p"));
 				}
 
-				processContinuation(xml, "allpages", "apfrom");
+				processContinuation(xml, "allpages");
 			} finally {
 				networkLock.unlock();
 			}
@@ -3091,7 +3093,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		private final Map<String, String> getParams;
 
 		AllUsersIterator(final String first, final String prefix, final String group) {
-			super(first /* can also be null */);
+			super("aufrom", first /* can also be null */);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allusers", "aulimit", "max", "auprop", "blockinfo|editcount|groups|rights|registration");
 
@@ -3141,7 +3143,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			// The query continue value from the previous call will be in
 			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
-			pageGetParams.put("aufrom", getContinuation());
+			pageGetParams.put(getContinuationName(), getContinuation());
 
 			final String url = createApiGetUrl(pageGetParams);
 
@@ -3159,7 +3161,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					setUpcoming(allusersTag.getElementsByTagName("u"));
 				}
 
-				processContinuation(xml, "allusers", "aufrom");
+				processContinuation(xml, "allusers");
 			} finally {
 				networkLock.unlock();
 			}
@@ -7523,6 +7525,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 	protected abstract class AbstractContinuableQueryIterator<T> extends AbstractBufferingIterator<T> {
 		/**
+		 * This field contains the name of the continuation value; for example,
+		 * <code>"rvstartid"</code>, <code>"eloffset"</code>.
+		 */
+		private String continuationName;
+
+		/**
 		 * This field contains the start or continue value for the next API
 		 * reply's worth of things being iterated over.
 		 */
@@ -7550,7 +7558,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		 * @param continuation
 		 *            The continuation to start with.
 		 */
-		AbstractContinuableQueryIterator(final String continuation) {
+		AbstractContinuableQueryIterator(final String continuationName, final String continuation) {
 			this.continuation = continuation;
 		}
 
@@ -7563,6 +7571,19 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		 */
 		public boolean isDone() {
 			return done;
+		}
+
+		/**
+		 * Returns the next continuation name to be used by
+		 * <code>cacheUpcoming</code>. Depending on the concrete implementation
+		 * of <tt>AbstractContinuableQueryIterator</tt>, this is a
+		 * <tt>start</tt>, <tt>from</tt> or <tt>continue</tt> value.
+		 * 
+		 * @return the next continuation name to be used by
+		 *         <code>cacheUpcoming</code>
+		 */
+		protected String getContinuationName() {
+			return continuationName;
 		}
 
 		/**
@@ -7649,7 +7670,10 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		/**
 		 * Processes the <tt>&lt;query-continue&gt;</tt> tag, updating the
-		 * continuation value as appropriate and updating the done flag.
+		 * continuation name and value as appropriate and updating the done
+		 * flag.
+		 * <p>
+		 * The attribute is parsed from the
 		 * 
 		 * @param reply
 		 *            The continuable reply from the API in XML format.
@@ -7657,11 +7681,8 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		 *            The name of the tag in <tt>&lt;query-continue&gt;</tt>
 		 *            containing the new continuation value, for example
 		 *            <code>"allpages"</code>.
-		 * @param attributeName
-		 *            The name of the attribute in the tag containing the new
-		 *            continuation value, for example <code>"apfrom"</code>.
 		 */
-		protected void processContinuation(Document reply, String tagName, String attributeName) {
+		protected void processContinuation(Document reply, String tagName) throws MediaWiki.ResponseFormatException {
 			final NodeList queryContinueTags = reply.getElementsByTagName("query-continue");
 
 			if (queryContinueTags.getLength() > 0) {
@@ -7672,7 +7693,13 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				if (continuationTags.getLength() > 0) {
 					final Element continuationTag = (Element) continuationTags.item(0);
 
-					continuation = continuationTag.getAttribute(attributeName);
+					NamedNodeMap attributes = continuationTag.getAttributes();
+
+					if (attributes.getLength() == 0)
+						throw new MediaWiki.ResponseFormatException("no attribute in query-continue/" + tagName);
+
+					continuationName = attributes.item(0).getNodeName();
+					continuation = attributes.item(0).getNodeValue();
 				} else {
 					done = true;
 				}
@@ -7696,9 +7723,9 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		protected abstract T convert(Element element) throws Exception;
 
 		/**
-		 * Reads the continuation value, stores the next buffer of elements
-		 * using <code>setUpcoming</code>, and stores the new continuation
-		 * value.
+		 * Reads the continuation name and value, stores the next buffer of
+		 * elements using <code>setUpcoming</code>, and stores the new
+		 * continuation name and value.
 		 * <p>
 		 * This method can assume that, when it is called, all of the following
 		 * conditions are met:
