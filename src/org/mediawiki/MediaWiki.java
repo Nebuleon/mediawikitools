@@ -1486,8 +1486,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws IOException, MediaWiki.MediaWikiException {
 			// Get the next page of revisions from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			// The start parameter is for only this get.
 			pageGetParams.put(getContinuationName(), getContinuation());
@@ -1562,8 +1560,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of categories from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -1711,8 +1707,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of category members from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -1840,8 +1834,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of image revisions from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -1917,8 +1909,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of links from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -1994,8 +1984,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of links from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -2075,8 +2063,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of links from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -2161,8 +2147,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of pages from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -2245,8 +2229,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of pages from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -2336,8 +2318,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of pages from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -2404,8 +2384,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of links from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -2608,8 +2586,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of categories from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -2714,8 +2690,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of images from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -2843,8 +2817,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of pages from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
@@ -3067,8 +3039,6 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 
 		protected synchronized void cacheUpcoming() throws Exception {
 			// Get the next page of users from the API.
-			// The query continue value from the previous call will be in
-			// start, if applicable.
 			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
 			pageGetParams.put(getContinuationName(), getContinuation());
 
