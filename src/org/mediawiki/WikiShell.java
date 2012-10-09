@@ -40,7 +40,6 @@ import java.util.regex.PatternSyntaxException;
 
 import org.mediawiki.MediaWiki.MediaWikiException;
 
-// TODO Make magic words like {{PAGENAME}}, {{PAGENAMEE}} work w/ expandInput()
 /**
  * A wiki shell that allows a user to perform actions on the wiki using the
  * command-line.
@@ -237,6 +236,7 @@ public class WikiShell {
 					builtinCommands.put(s, n);
 				}
 			}
+			builtinCommands.put("interwiki", new ResolveInterwiki());
 			builtinCommands.put("parse", new Parse());
 			{
 				final SpecialPages p = new SpecialPages();
@@ -2494,7 +2494,6 @@ public class WikiShell {
 		}
 
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
-
 			final Map<String, String> specialPageAliases = context.wiki.getSpecialPageAliases();
 
 			if (context.pageName.length() > 0) {
@@ -2511,7 +2510,7 @@ public class WikiShell {
 					if (specialPage.equals(context.pageName)) {
 						context.output.println(String.format("%s is a valid special page", context.pageName));
 					} else {
-						context.output.println(String.format("%1$s is an alias of %3$s:%2$s", context.pageName, specialPage, namespaces.getNamespace(MediaWiki.StandardNamespace.SPECIAL).getCanonicalName()));
+						context.output.println(String.format("%3$s:%1$s is an alias of %3$s:%2$s", context.pageName, specialPage, namespaces.getNamespace(MediaWiki.StandardNamespace.SPECIAL).getCanonicalName()));
 					}
 				} else {
 					System.err.println(context.pageName + ": No such special page");
@@ -2549,6 +2548,34 @@ public class WikiShell {
 			System.err.println("special[page][s] [<special page name>]");
 			System.err.println();
 			System.err.println("The special page name is optional. If provided, only information about the given special page is displayed.");
+		}
+	}
+
+	public static class ResolveInterwiki extends AbstractPageReadCommand {
+		@Override
+		public void getPageName(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.pageName != null)
+				return;
+			context.pageName = input("full interwiki page name: ");
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
+			MediaWiki.InterwikiPrefixes prefixes = context.wiki.getInterwikiPrefixes();
+			MediaWiki.InterwikiPrefix prefix = prefixes.getInterwikiPrefixForPage(context.pageName);
+
+			if (prefix != null) {
+				System.out.println(prefix.resolveURL(prefixes.removeInterwikiPrefix(context.pageName)));
+			} else {
+				System.err.println(context.pageName + ": Page is on this wiki");
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Resolves an interwiki link to its URL.");
+			System.err.println();
+			System.err.println("interwiki [<page name>]");
+			System.err.println();
+			System.err.println("The page name is optional and will be requested if not provided.");
 		}
 	}
 
