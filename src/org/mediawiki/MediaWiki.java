@@ -1437,7 +1437,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		private final Map<String, String> getParams;
 
 		MultipleRevisionIterator(final String element, final String startType, final Object start, final String endType, final Object end, final boolean getContentImmediately) {
-			super(startType, start instanceof Date ? dateToTimestamp((Date) start) : start.toString());
+			super(startType, start != null ? (start instanceof Date ? dateToTimestamp((Date) start) : start.toString()) : null);
 
 			getParams = paramValuesToMap("action", "query", "format", "xml", "prop", "revisions", "titles", titleToAPIForm(element), "rvprop", "ids|flags|timestamp|user|comment|size", "rvdir", "newer", "rvlimit", "max");
 			if (end != null) {
@@ -7456,6 +7456,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		 *            The continuation to start with.
 		 */
 		AbstractContinuableQueryIterator(final String continuationName, final String continuation) {
+			this.continuationName = continuationName;
 			this.continuation = continuation;
 		}
 
