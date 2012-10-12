@@ -28,6 +28,7 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -439,7 +440,7 @@ public class WikiShell {
 				}
 			}
 
-			pageListModifiers.put("list", new ListPages());
+			pageListModifiers.put("view", new ViewPages());
 			{
 				final AddPages a = new AddPages();
 				for (final String s : Arrays.asList("add", "union")) {
@@ -465,6 +466,7 @@ public class WikiShell {
 					pageListModifiers.put(s, n);
 				}
 			}
+			pageListModifiers.put("choose", new ChoosePages());
 		} finally {
 			workEnd();
 		}
@@ -1192,7 +1194,7 @@ public class WikiShell {
 					} else {
 						aliasesForCommand.append(", ").append(entry.getKey());
 					}
-					suffixes.put(aliasesForCommand, map == builtinCommands ? "(builtin)" : map == commandPrefixes ? "(prefix)" : map == pageListModifiers ? "('for' subshell)" : "");
+					suffixes.put(aliasesForCommand, map == builtinCommands ? "(builtin)" : map == commandPrefixes ? "(prefix)" : map == pageListModifiers ? "('for' subshell's 'list' command)" : "");
 				}
 			}
 
@@ -3764,7 +3766,7 @@ public class WikiShell {
 		public void perform(final CommandContext context) throws IOException, MediaWikiException, ParseException {
 			final String presetCommandName = (String) context.essentialInput, builtinCommandName = (String) context.auxiliaryInput;
 
-			if (builtinCommands.containsKey(presetCommandName) || commandPrefixes.containsKey(presetCommandName) || pageListModifiers.containsKey(presetCommandName)) {
+			if (builtinCommands.containsKey(presetCommandName) || commandPrefixes.containsKey(presetCommandName)) {
 				System.err.println(presetCommandName + ": A command of this name already exists");
 				throw new CancellationException();
 			}
@@ -4874,8 +4876,8 @@ public class WikiShell {
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
 			final Command command = getCommand((String) context.essentialInput);
 			MediaWiki wiki = context.wiki;
-			final CommandContext repeatedContext = getCommandContext((String) context.essentialInput);
-			boolean requestsPageName, requestsEssentialInput, requestsAuxiliaryInput, requestsConfirmation;
+			CommandContext repeatedContext = getCommandContext((String) context.essentialInput);
+			boolean requestsPageName = false, requestsEssentialInput = false, requestsAuxiliaryInput = false, requestsConfirmation;
 			boolean repeatEssentialInput = false, repeatAuxiliaryInput = false;
 
 			path.addLast("repeat");
@@ -4884,28 +4886,36 @@ public class WikiShell {
 					// The first invocation establishes which inputs are
 					// repeated.
 					// Further invocations use these repeated inputs.
+					repeatedContext = getCommandContext((String) context.essentialInput);
 
 					repeatedContext.wiki = wiki;
-					repeatedContext.pageName = null;
-					repeatedContext.token = repeatedContext.confirmation = repeatedContext.temporary = repeatedContext.essentialInput = repeatedContext.auxiliaryInput = null;
+					repeatedContext.token = repeatedContext.confirmation = repeatedContext.temporary = null;
 					repeatedContext.arguments = context.arguments;
 					context.arguments = "";
 					command.parseArguments(repeatedContext);
 					try {
-						command.getPageName(repeatedContext);
-						requestsPageName = repeatedContext.pageName != null;
+						if (repeatedContext.pageName == null) {
+							command.getPageName(repeatedContext);
+							requestsPageName = repeatedContext.pageName != null;
+						}
 						if (!getTokenWithRetry(command, repeatedContext))
 							return;
-						command.getEssentialInput(repeatedContext);
-						requestsEssentialInput = repeatedContext.essentialInput != null;
-						if (requestsEssentialInput) {
-							repeatEssentialInput = inputBoolean(requestsPageName ? "Use the settings after the page name for all repetitions? [y/N] " : "Use these settings for all repetitions? [y/N] ", false);
-						}
-						command.getAuxiliaryInput(repeatedContext);
-						requestsAuxiliaryInput = repeatedContext.auxiliaryInput != null;
-						if (requestsAuxiliaryInput) {
-							repeatAuxiliaryInput = inputBoolean(requestsPageName && !requestsEssentialInput ? "Use the settings after the page name for all repetitions? [y/N] " : "Use these settings for all repetitions? [y/N] ", false);
-						}
+						if (repeatedContext.essentialInput == null) {
+							command.getEssentialInput(repeatedContext);
+							requestsEssentialInput = repeatedContext.essentialInput != null;
+							if (requestsEssentialInput) {
+								repeatEssentialInput = inputBoolean(requestsPageName ? "Use the settings after the page name for all repetitions? [y/N] " : "Use these settings for all repetitions? [y/N] ", false);
+							}
+						} else
+							repeatEssentialInput = true;
+						if (repeatedContext.auxiliaryInput == null) {
+							command.getAuxiliaryInput(repeatedContext);
+							requestsAuxiliaryInput = repeatedContext.auxiliaryInput != null;
+							if (requestsAuxiliaryInput) {
+								repeatAuxiliaryInput = inputBoolean(requestsPageName && !requestsEssentialInput ? "Use the settings after the page name for all repetitions? [y/N] " : "Use these settings for all repetitions? [y/N] ", false);
+							}
+						} else
+							repeatAuxiliaryInput = true;
 						while (true) /*- command retry loop */{
 							try {
 								command.confirm(repeatedContext);
@@ -5064,8 +5074,8 @@ public class WikiShell {
 					final Command command = getCommand(tokens[0]);
 					if (command != null) {
 						if (command instanceof IterableCommand) {
-							context.arguments = tokens.length >= 2 ? tokens[1] : "";
 							context.essentialInput = tokens[0];
+							break;
 						} else {
 							System.err.println(tokens[0] + ": Command does not output a list of pages");
 						}
@@ -5161,12 +5171,40 @@ public class WikiShell {
 
 					if ((tokens.length > 0) && (tokens[0].length() > 0)) {
 						final Command repeatedCommand = getCommand(tokens[0]);
-						if (!pageNames.isEmpty() && (repeatedCommand != null)) {
+						if (tokens[0].equalsIgnoreCase("list")) {
+							tokens = (tokens.length == 2 ? tokens[1] : "").split(" +", 2);
+
+							final PageListModifier modifier = pageListModifiers.get(tokens[0]);
+							if (modifier != null) {
+								final PageListModifierContext modContext = new PageListModifierContext();
+								modContext.arguments = tokens.length >= 2 ? tokens[1] : "";
+								modContext.wiki = wiki;
+								for (final Object prefix : prefixes)
+									if (prefix instanceof PageListModifier) {
+										((PageListModifier) prefix).modify(pageNames, modContext);
+									}
+								try {
+									modifier.modify(pageNames, modContext);
+								} catch (CancellationException ce) {
+									// eat
+								}
+								// Modify the path to show the new page count.
+								path.removeLast();
+								path.add(pageNames.size() + " pages");
+								// Warn the user if all pages have just been
+								// removed.
+								if (pageNames.isEmpty()) {
+									System.err.println("Note: All pages have been removed; commands will not run on any pages");
+								}
+							} else if (tokens[0].length() > 0 && !pageNames.isEmpty()) {
+								System.err.println(tokens[0] + ": No such command");
+							}
+						} else if (!pageNames.isEmpty() && (repeatedCommand != null)) {
 							final CommandContext repeatedContext = getCommandContext(tokens[0]);
 							// The first invocation establishes which inputs are
 							// repeated.
 							// Further invocations use these repeated inputs.
-							boolean requestsEssentialInput, requestsAuxiliaryInput, requestsConfirmation;
+							boolean requestsEssentialInput = false, requestsAuxiliaryInput = false, requestsConfirmation;
 							boolean repeatEssentialInput = false, repeatAuxiliaryInput = false;
 
 							repeatedContext.wiki = wiki;
@@ -5178,16 +5216,22 @@ public class WikiShell {
 								if (!getTokenWithRetry(repeatedCommand, repeatedContext)) {
 									continue prompt;
 								}
-								repeatedCommand.getEssentialInput(repeatedContext);
-								requestsEssentialInput = repeatedContext.essentialInput != null;
-								if (requestsEssentialInput) {
-									repeatEssentialInput = inputBoolean("Use these settings for all pages? [y/N] ", false);
-								}
-								repeatedCommand.getAuxiliaryInput(repeatedContext);
-								requestsAuxiliaryInput = repeatedContext.auxiliaryInput != null;
-								if (requestsAuxiliaryInput) {
-									repeatAuxiliaryInput = inputBoolean("Use these settings for all pages? [y/N] ", false);
-								}
+								if (repeatedContext.essentialInput == null) {
+									repeatedCommand.getEssentialInput(repeatedContext);
+									requestsEssentialInput = repeatedContext.essentialInput != null;
+									if (requestsEssentialInput) {
+										repeatEssentialInput = inputBoolean("Use these settings for all pages? [y/N] ", false);
+									}
+								} else
+									repeatEssentialInput = true;
+								if (repeatedContext.auxiliaryInput == null) {
+									repeatedCommand.getAuxiliaryInput(repeatedContext);
+									requestsAuxiliaryInput = repeatedContext.auxiliaryInput != null;
+									if (requestsAuxiliaryInput) {
+										repeatAuxiliaryInput = inputBoolean("Use these settings for all pages? [y/N] ", false);
+									}
+								} else
+									repeatAuxiliaryInput = true;
 								while (true) /*- command retry loop */{
 									try {
 										repeatedCommand.confirm(repeatedContext);
@@ -5243,7 +5287,7 @@ public class WikiShell {
 									}
 								}
 
-								for (int i = 1; i < pageNames.size(); i++) /*- command for pages loop */{
+								nextPage: for (int i = 1; i < pageNames.size(); i++) /*- command for pages loop */{
 									System.err.println(pageNames.get(i));
 									repeatedContext.pageName = pageNames.get(i);
 									repeatedContext.token = repeatedContext.confirmation = repeatedContext.temporary = null;
@@ -5255,7 +5299,7 @@ public class WikiShell {
 										repeatedContext.auxiliaryInput = null;
 									}
 									if (!getTokenWithRetry(repeatedCommand, repeatedContext)) {
-										continue prompt;
+										continue nextPage;
 									}
 									if (!repeatEssentialInput) {
 										repeatedCommand.getEssentialInput(repeatedContext);
@@ -5276,7 +5320,7 @@ public class WikiShell {
 										} catch (final MediaWiki.MediaWikiException e) {
 											System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 											if (!inputBoolean("Retry? [Y/n] ", true)) {
-												continue prompt;
+												continue nextPage;
 											}
 											// Reconfirm the command. For edit
 											// conflicts and the like, we also
@@ -5285,18 +5329,18 @@ public class WikiShell {
 											if (repeatedContext.token != null) {
 												repeatedContext.token = null;
 												if (!getTokenWithRetry(command, repeatedContext)) {
-													continue prompt;
+													continue nextPage;
 												}
 											}
 										} catch (final IOException e) {
 											System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 											if (!inputBoolean("Retry? [Y/n] ", true)) {
-												continue prompt;
+												continue nextPage;
 											}
 										} catch (final ParseException e) {
 											System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 											if (!inputBoolean("Retry? [Y/n] ", true)) {
-												continue prompt;
+												continue nextPage;
 											}
 										}
 									}
@@ -5304,28 +5348,8 @@ public class WikiShell {
 							} catch (final CancellationException ce) {
 								continue prompt;
 							}
-						} else {
-							final PageListModifier modifier = pageListModifiers.get(tokens[0]);
-							if (modifier != null) {
-								final PageListModifierContext modContext = new PageListModifierContext();
-								modContext.arguments = tokens.length >= 2 ? tokens[1] : "";
-								modContext.wiki = wiki;
-								for (final Object prefix : prefixes)
-									if (prefix instanceof PageListModifier) {
-										((PageListModifier) prefix).modify(pageNames, modContext);
-									}
-								modifier.modify(pageNames, modContext);
-								// Modify the path to show the new page count.
-								path.removeLast();
-								path.add(pageNames.size() + " pages");
-								// Warn the user if all pages have just been
-								// removed.
-								if (pageNames.isEmpty()) {
-									System.err.println("Note: All pages have been removed; commands will not run on any pages");
-								}
-							} else if (!pageNames.isEmpty()) {
-								System.err.println(tokens[0] + ": No such command");
-							}
+						} else if (tokens[0].length() > 0) {
+							System.err.println(tokens[0] + ": No such command");
 						}
 					}
 				}
@@ -5345,7 +5369,7 @@ public class WikiShell {
 			System.err.println();
 			System.err.println("You may also repeat certain inputs from all commands entered in the subshell, for example to keep using the same deletion reason with 'for transclusions Template:Copyrighted' 'delete'. If all inputs would be repeated, and the command does not require a page name or confirmation before its action, then a final confirmation will appear, and the settings will be applied for all remaining pages.");
 			System.err.println();
-			System.err.println("You may list the pages used by the subshell using the 'list' (or 'lines list' command, or alter the list of pages used for subsequent commands in the subshell with various commands. They are listed in 'lines commands' as belonging to the 'for' subshell commands.");
+			System.err.println("You may list the pages used by the subshell using the 'list view' (or 'lines list view') command, or alter the list of pages used for subsequent commands in the subshell with various commands after 'list'. They are listed in 'lines commands' as belonging to the 'for' subshell's 'list' command.");
 		}
 	}
 
@@ -5396,7 +5420,7 @@ public class WikiShell {
 		}
 	}
 
-	public static class ListPages implements PageListModifier {
+	public static class ViewPages implements PageListModifier {
 		public void modify(final List<String> pages, final PageListModifierContext context) throws IOException, NullPointerException, CancellationException {
 			for (final String page : pages) {
 				context.output.println(page);
@@ -5433,6 +5457,25 @@ public class WikiShell {
 			System.err.println("Removes duplicates in the list of pages used by the current 'for' subshell.");
 			System.err.println();
 			System.err.println("removedup[{e | licate}]s");
+		}
+	}
+
+	public static class ChoosePages implements PageListModifier {
+		public void modify(final List<String> pages, final PageListModifierContext context) throws IOException, NullPointerException, CancellationException {
+			ListIterator<String> i = pages.listIterator();
+
+			while (i.hasNext()) {
+				String s = i.next();
+				if (!inputBoolean(String.format("%s [Keep/remove]: ", s), 'k', 'r', true)) {
+					i.remove();
+				}
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Interactively chooses which pages to keep in the list of pages used by the current 'for' subshell.");
+			System.err.println();
+			System.err.println("choose");
 		}
 	}
 
