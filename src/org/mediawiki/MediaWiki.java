@@ -63,12 +63,11 @@ import org.xml.sax.SAXException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class MediaWiki implements Serializable, ObjectInputValidation {
-	// TODO Add processContinuation to MultipleRevisionIterator
 	// TODO Add parse-pagetext
 	// TODO Add block/unblock
 	// TODO Add undelete
 	// TODO Add watch-add/watch-del/watch-list/watch-newedits
-	// TODO Add Special:Recentchanges, Special:Contributions
+	// TODO Add Special:Contributions
 	// TODO Add patrol
 	// TODO Add setSecure
 
@@ -1655,10 +1654,10 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 * 
 	 * @param title
 	 *            The full name of the category to be examined.
-	 * @param ascendingOrder
-	 *            Whether the pages are listed in ascending order (
-	 *            <code>true</code>), or in descending order (<code>false</code>
-	 *            ) according to the category's sort key.
+	 * @param lexicographicalOrder
+	 *            Whether the pages are listed in lexicographical order (
+	 *            <code>true</code>), or in reverse lexicographical order (
+	 *            <code>false</code> ) according to the category's sort key.
 	 * @param first
 	 *            The sort key at which to start enumerating pages in the
 	 *            category. A page having this exact sort key is included in the
@@ -1677,14 +1676,14 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         page that is a member of the given category when its
 	 *         <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.CategoryMember> getCategoryMembers(final String title, final boolean ascendingOrder, final String first, final String last, final long... namespaceIDs) {
-		return new MediaWiki.CategoryMemberIterator(title, ascendingOrder, first, last, namespaceIDs);
+	public Iterator<MediaWiki.CategoryMember> getCategoryMembers(final String title, final boolean lexicographicalOrder, final String first, final String last, final long... namespaceIDs) {
+		return new MediaWiki.CategoryMemberIterator(title, lexicographicalOrder, first, last, namespaceIDs);
 	}
 
 	private class CategoryMemberIterator extends AbstractContinuableQueryIterator<MediaWiki.CategoryMember> {
 		private final Map<String, String> getParams;
 
-		CategoryMemberIterator(final String element, final boolean ascendingOrder, final Object first, final Object last, final long... namespaceIDs) {
+		CategoryMemberIterator(final String element, final boolean lexicographicalOrder, final Object first, final Object last, final long... namespaceIDs) {
 			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "categorymembers", "cmtitle", titleToAPIForm(element), "cmprop", "ids|title|sortkeyprefix|timestamp", "cmlimit", "max");
 
 			if (((first == null) && (last == null)) || (first instanceof String) || (last instanceof String)) {
@@ -1692,11 +1691,11 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 			} else if ((first instanceof Date) || (last instanceof Date)) {
 				getParams.put("cmsort", "timestamp");
 			}
-			getParams.put("cmdir", ascendingOrder ? "asc" : "desc");
+			getParams.put("cmdir", lexicographicalOrder ? "asc" : "desc");
 			// If the order is descending, we need to reverse them.
 			final String firstValue = first != null ? (first instanceof Date ? dateToISO8601((Date) first) : (String) first) : null;
 			final String lastValue = last != null ? (last instanceof Date ? dateToISO8601((Date) last) : (String) last) : null;
-			if (ascendingOrder) {
+			if (lexicographicalOrder) {
 				getParams.put(first instanceof Date ? "cmstart" : "cmstartsortkeyprefix", firstValue);
 				getParams.put(last instanceof Date ? "cmend" : "cmendsortkeyprefix", lastValue);
 			} else {
@@ -2584,7 +2583,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *            The first few characters of the base name of all categories to
 	 *            be returned. This parameter is <code>null</code> to avoid
 	 *            using this constraint.
-	 * @param ascendingOrder
+	 * @param lexicographicalOrder
 	 *            <code>true</code> if the order to enumerate the categories in
 	 *            is lexicographical; <code>false</code> if the order is reverse
 	 *            lexicographical. This also affects the order of
@@ -2601,17 +2600,17 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         matching categories on the wiki that this <tt>MediaWiki</tt>
 	 *         represents when its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.Category> getAllCategories(final String first, final String last, final String prefix, final boolean ascendingOrder, final Long minimumEntries, final Long maximumEntries) {
-		return new MediaWiki.AllCategoriesIterator(first, last, prefix, ascendingOrder, minimumEntries, maximumEntries);
+	public Iterator<MediaWiki.Category> getAllCategories(final String first, final String last, final String prefix, final boolean lexicographicalOrder, final Long minimumEntries, final Long maximumEntries) {
+		return new MediaWiki.AllCategoriesIterator(first, last, prefix, lexicographicalOrder, minimumEntries, maximumEntries);
 	}
 
 	private class AllCategoriesIterator extends AbstractContinuableQueryIterator<MediaWiki.Category> {
 		private final Map<String, String> getParams;
 
-		AllCategoriesIterator(final String first, final String last, final String prefix, final boolean ascendingOrder, final Long minimumEntries, final Long maximumEntries) {
+		AllCategoriesIterator(final String first, final String last, final String prefix, final boolean lexicographicalOrder, final Long minimumEntries, final Long maximumEntries) {
 			super("acfrom", first /* can also be null */);
 
-			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allcategories", "aclimit", "max", "acprop", "size", "acdir", ascendingOrder ? "ascending" : "descending");
+			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allcategories", "aclimit", "max", "acprop", "size", "acdir", lexicographicalOrder ? "ascending" : "descending");
 
 			if ((last != null) && (last.length() > 0)) {
 				getParams.put("acto", last);
@@ -2689,7 +2688,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *            The first few characters of the base name of all images to be
 	 *            returned. This parameter is <code>null</code> to avoid using
 	 *            this constraint.
-	 * @param ascendingOrder
+	 * @param lexicographicalOrder
 	 *            <code>true</code> if the order to enumerate the images in is
 	 *            lexicographical; <code>false</code> if the order is reverse
 	 *            lexicographical. This also affects the order of
@@ -2710,17 +2709,17 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         matching images on the wiki that this <tt>MediaWiki</tt>
 	 *         represents when its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.ImageRevision> getAllImages(final String first, final String prefix, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
-		return new MediaWiki.AllImagesIterator(first, prefix, ascendingOrder, minimumLength, maximumLength, sha1);
+	public Iterator<MediaWiki.ImageRevision> getAllImages(final String first, final String prefix, final boolean lexicographicalOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
+		return new MediaWiki.AllImagesIterator(first, prefix, lexicographicalOrder, minimumLength, maximumLength, sha1);
 	}
 
 	private class AllImagesIterator extends AbstractContinuableQueryIterator<MediaWiki.ImageRevision> {
 		private final Map<String, String> getParams;
 
-		AllImagesIterator(final String first, final String prefix, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
+		AllImagesIterator(final String first, final String prefix, final boolean lexicographicalOrder, final Long minimumLength, final Long maximumLength, final String sha1) {
 			super("aifrom", first /* can also be null */);
 
-			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allimages", "ailimit", "max", "aiprop", "timestamp|user|comment|url|size|sha1|mime", "aidir", ascendingOrder ? "ascending" : "descending");
+			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allimages", "ailimit", "max", "aiprop", "timestamp|user|comment|url|size|sha1|mime", "aidir", lexicographicalOrder ? "ascending" : "descending");
 
 			if ((prefix != null) && (prefix.length() > 0)) {
 				getParams.put("aiprefix", prefix);
@@ -2806,7 +2805,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *            The ID of the namespace to enumerate pages from. This is
 	 *            typically one of the namespace identifiers in
 	 *            <tt>MediaWiki.StandardNamespace</tt>.
-	 * @param ascendingOrder
+	 * @param lexicographicalOrder
 	 *            <code>true</code> if the order to enumerate the pages in is
 	 *            lexicographical; <code>false</code> if the order is reverse
 	 *            lexicographical. This also affects the order of
@@ -2844,17 +2843,17 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 	 *         matching pages on the wiki that this <tt>MediaWiki</tt>
 	 *         represents when its <code>next</code> method is called
 	 */
-	public Iterator<MediaWiki.PageDesignation> getAllPages(final String first, final String prefix, final long namespaceID, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
-		return new MediaWiki.AllPagesIterator(first, prefix, namespaceID, ascendingOrder, minimumLength, maximumLength, redirect, languageLinks, protectionAction, protectionType);
+	public Iterator<MediaWiki.PageDesignation> getAllPages(final String first, final String prefix, final long namespaceID, final boolean lexicographicalOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
+		return new MediaWiki.AllPagesIterator(first, prefix, namespaceID, lexicographicalOrder, minimumLength, maximumLength, redirect, languageLinks, protectionAction, protectionType);
 	}
 
 	private class AllPagesIterator extends AbstractContinuableQueryIterator<MediaWiki.PageDesignation> {
 		private final Map<String, String> getParams;
 
-		AllPagesIterator(final String first, final String prefix, final long namespaceID, final boolean ascendingOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
+		AllPagesIterator(final String first, final String prefix, final long namespaceID, final boolean lexicographicalOrder, final Long minimumLength, final Long maximumLength, final Boolean redirect, final Boolean languageLinks, final String protectionAction, final String protectionType) {
 			super("apfrom", first /* can also be null */);
 
-			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allpages", "aplimit", "max", "apnamespace", Long.toString(namespaceID), "apdir", ascendingOrder ? "ascending" : "descending");
+			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "allpages", "aplimit", "max", "apnamespace", Long.toString(namespaceID), "apdir", lexicographicalOrder ? "ascending" : "descending");
 
 			if ((prefix != null) && (prefix.length() > 0)) {
 				getParams.put("apprefix", prefix);
@@ -3139,6 +3138,254 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 				}
 
 				processContinuation(xml, "allusers");
+			} finally {
+				networkLock.unlock();
+			}
+		}
+	}
+
+	// - - - RECENT CHANGES (LIST=RECENTCHANGES) - - -
+
+	/**
+	 * Retrieves changes made to the wiki before, or after, a specified
+	 * timestamp, or between two timestamps.
+	 * <p>
+	 * Multiple restrictions can be applied to the retrieval of these changes.
+	 * <p>
+	 * The return value is an iterator which will return information about each
+	 * of the matching changes on the wiki that this <tt>MediaWiki</tt>
+	 * represents when its <code>next</code> method is called. The iterator's
+	 * <code>next</code> method may:
+	 * <ul>
+	 * <li>throw <tt>MediaWiki.IterationException</tt>, an unchecked exception,
+	 * if it encounters an error.
+	 * </ul>
+	 * 
+	 * @param earliest
+	 *            The timestamp of the earliest change to retrieve. If a change
+	 *            was made on this exact second, it is included. This parameter
+	 *            is <code>null</code> to avoid using this constraint.
+	 * @param latest
+	 *            The timestamp of the latest change to retrieve. If a change
+	 *            was made on this exact second, it is included. This parameter
+	 *            is <code>null</code> to avoid using this constraint.
+	 * @param chronologicalOrder
+	 *            <code>true</code> to retrieve the changes in chronological
+	 *            order; <code>false</code> to retrieve them in reverse
+	 *            chronological order.
+	 * @param elementCount
+	 *            Number of elements to retrieve at once. This should be as
+	 *            close as possible to the expected number of changes during the
+	 *            time it takes for the caller to process them. A good value for
+	 *            this parameter depends on the size of the wiki's userbase. On
+	 *            the English Wikipedia, <code>50</code> is recommended. On
+	 *            other language Wikipedias, <code>40</code> to <code>10</code>
+	 *            are recommended. On Wikia, <code>10</code> to <code>3</code>
+	 *            are recommended.
+	 * @param showUser
+	 *            User to retrieve the actions of. Those of all other users are
+	 *            not retrieved. If <code>null</code>, do not use this
+	 *            restriction.
+	 * @param hideUser
+	 *            User not to retrieve the actions of. Those of all other users
+	 *            are retrieved. If <code>null</code>, do not use this
+	 *            restriction.
+	 * @param showRegularEdits
+	 *            <code>true</code> to retrieve regular edits to pages, possibly
+	 *            in addition to page creations and log entries;
+	 *            <code>false</code> not to retrieve them.
+	 * @param showNewPages
+	 *            <code>true</code> to retrieve page creations, possibly in
+	 *            addition to regular edits to pages and log entries;
+	 *            <code>false</code> not to retrieve them.
+	 * @param showLogEntries
+	 *            <code>true</code> to retrieve log entries, possibly in
+	 *            addition to regular edits to pages and page creations;
+	 *            <code>false</code> not to retrieve them.
+	 * @param showMinorEdits
+	 *            Retrieve only edits that are minor (<code>true</code>) or not
+	 *            (<code>false</code>); if <code>null</code>, do not use this
+	 *            restriction.
+	 * @param showBotActions
+	 *            Retrieve only actions that are made by a bot (
+	 *            <code>true</code>) or not (<code>false</code>); if
+	 *            <code>null</code>, do not use this restriction.
+	 * @param showAnonymousActions
+	 *            Retrieve only actions that are made by an anonymous user (
+	 *            <code>true</code>) or not (<code>false</code>); if
+	 *            <code>null</code>, do not use this restriction.
+	 * @param showRedirects
+	 *            Retrieve only actions that are made on pages that are
+	 *            currently redirects (<code>true</code>) or to those that are
+	 *            currently not redirects (<code>false</code>); if
+	 *            <code>null</code>, do not use this restriction.
+	 * @param showPatrolled
+	 *            Retrieve only edits that have been patrolled (
+	 *            <code>true</code>) or not (<code>false</code>); if
+	 *            <code>null</code>, do not use this restriction. This requires
+	 *            the permission to patrol.
+	 * @param getPatrolInformation
+	 *            In addition to the other pieces of information about a change,
+	 *            also retrieve information used for patrolling. Currently, this
+	 *            is a flag indicating whether the revision has been patrolled,
+	 *            as well as a <i>patrol token</i>.
+	 * @param namespaceIDs
+	 *            List of the IDs of namespaces to retrieve changes for. If
+	 *            <code>null</code> or empty, do not use this restriction.
+	 * @return an iterator which will return information about each of the
+	 *         matching changes on the wiki that this <tt>MediaWiki</tt>
+	 *         represents when its <code>next</code> method is called
+	 */
+	public Iterator<MediaWiki.RecentChange> recentChanges(final Date earliest, final Date latest, final boolean chronologicalOrder, final int elementCount, final String showUser, final String hideUser, final boolean showRegularEdits, final boolean showNewPages, final boolean showLogEntries, final Boolean showMinorEdits, final Boolean showBotActions, final Boolean showAnonymousActions, final Boolean showRedirects, final Boolean showPatrolled, final boolean getPatrolInformation, final long... namespaceIDs) {
+		return new MediaWiki.RecentChangesIterator(earliest, latest, chronologicalOrder, elementCount, showUser, hideUser, showRegularEdits, showNewPages, showLogEntries, showMinorEdits, showBotActions, showAnonymousActions, showRedirects, showPatrolled, getPatrolInformation, namespaceIDs);
+	}
+
+	private class RecentChangesIterator extends AbstractContinuableQueryIterator<MediaWiki.RecentChange> {
+		private final Map<String, String> getParams;
+
+		RecentChangesIterator(final Date earliest, final Date latest, final boolean chronologicalOrder, final int elementCount, final String showUser, final String hideUser, final boolean showRegularEdits, final boolean showNewPages, final boolean showLogEntries, final Boolean showMinorEdits, final Boolean showBotActions, final Boolean showAnonymousActions, final Boolean showRedirects, final Boolean showPatrolled, final boolean getPatrolInformation, final long[] namespaceIDs) {
+			getParams = paramValuesToMap("action", "query", "format", "xml", "list", "recentchanges", "rclimit", Integer.toString(elementCount), "rcnamespace", namespacesParameter(namespaceIDs), "rcdir", chronologicalOrder ? "newer" : "older", "rcuser", showUser, "rcexcludeuser", hideUser);
+
+			if (chronologicalOrder) {
+				getParams.put("rcdir", "newer");
+				if (earliest != null)
+					getParams.put("rcstart", iso8601TimestampParser.format(earliest));
+				if (latest != null)
+					getParams.put("rcend", iso8601TimestampParser.format(latest));
+			} else {
+				getParams.put("rcdir", "older");
+				if (earliest != null)
+					getParams.put("rcend", iso8601TimestampParser.format(earliest));
+				if (latest != null)
+					getParams.put("rcstart", iso8601TimestampParser.format(latest));
+			}
+
+			StringBuilder rcType = new StringBuilder(12);
+			if (showRegularEdits)
+				rcType.append("edit");
+			if (showNewPages) {
+				if (rcType.length() > 0)
+					rcType.append('|');
+				rcType.append("new");
+			}
+			if (showLogEntries) {
+				if (rcType.length() > 0)
+					rcType.append('|');
+				rcType.append("log");
+			}
+			getParams.put("rctype", rcType.toString());
+
+			StringBuilder rcShow = new StringBuilder(38);
+			if (showMinorEdits != null)
+				rcShow.append(showMinorEdits ? "minor" : "!minor");
+			if (showBotActions != null) {
+				if (rcShow.length() > 0)
+					rcShow.append('|');
+				rcShow.append(showBotActions ? "bot" : "!bot");
+			}
+			if (showAnonymousActions != null) {
+				if (rcShow.length() > 0)
+					rcShow.append('|');
+				rcShow.append(showAnonymousActions ? "anon" : "!anon");
+			}
+			if (showRedirects != null) {
+				if (rcShow.length() > 0)
+					rcShow.append('|');
+				rcShow.append(showRedirects ? "redirect" : "!redirect");
+			}
+			if (showPatrolled != null) {
+				if (rcShow.length() > 0)
+					rcShow.append('|');
+				rcShow.append(showPatrolled ? "patrolled" : "!patrolled");
+			}
+			getParams.put("rcshow", rcShow.toString());
+
+			StringBuilder rcProp = new StringBuilder("user|comment|timestamp|title|ids|sizes|redirect|loginfo|flags");
+
+			if (getPatrolInformation) {
+				rcProp.append("|patrolled");
+				getParams.put("rctoken", "patrol");
+			}
+			getParams.put("rcprop", rcProp.toString());
+		}
+
+		@Override
+		public MediaWiki.RecentChange convert(final Element element) throws Exception {
+			/*-
+			 * <rc type="new" ns="3" title="User talk:MelanieCody" rcid="532895423" pageid="37295049" revid="517240270" old_revid="0" user="MelanieCody" new="" oldlen="0" newlen="8613" timestamp="2012-10-11T18:00:36Z" comment="[[WP:AES|←]]Created page with 'Susan Penfield (born January 19, 1946--) is an American linguistic anthropologist, educator and researcher of American Indian Languages, whose work centers on en...'"/>
+			 * 
+			 * <rc type="edit" ns="6" title="File:Alsou (Russian album).jpeg" rcid="532895424" pageid="34282817" revid="517240271" old_revid="469617691" user="Legobot" bot="" minor="" oldlen="378" newlen="402" timestamp="2012-10-11T18:00:36Z" comment="Bot: Updating license tag(s) with image has rationale=yes"/>
+			 * 
+			 * <rc type="log" ns="0" title="69th Infantry Regiment (United States)" rcid="532895452" pageid="32575678" revid="0" old_revid="0" user="Orangemike" oldlen="0" newlen="0" timestamp="2012-10-11T18:00:44Z" comment="[[WP:PP#Content disputes|Edit warring / Content dispute]]" logid="45209324" logtype="protect" logaction="modify">
+			 *   <param>‎[edit=autoconfirmed] (indefinite) ‎[move=sysop] (indefinite)</param>
+			 *   <param/>
+			 * </rc>
+			 */
+			final String changeType = element.getAttribute("type");
+
+			final long namespaceID = Long.parseLong(element.getAttribute("ns"));
+			final String fullName = element.getAttribute("title");
+
+			final long rcid = Long.parseLong(element.getAttribute("rcid"));
+			final long pageID = Long.parseLong(element.getAttribute("pageid"));
+			final long revid = Long.parseLong(element.getAttribute("revid"));
+			final long oldRevid = Long.parseLong(element.getAttribute("old_revid"));
+
+			final String username = element.getAttribute("user");
+			final String comment = element.getAttribute("comment");
+
+			final long oldLen = element.hasAttribute("oldlen") ? Long.parseLong(element.getAttribute("oldlen")) : 0;
+			final long newLen = element.hasAttribute("newlen") ? Long.parseLong(element.getAttribute("newlen")) : 0;
+
+			final Date timestamp = timestampToDate(element.getAttribute("timestamp"));
+
+			final boolean isNew = element.hasAttribute("new"), bot = element.hasAttribute("bot"), minor = element.hasAttribute("minor"), anonymous = element.hasAttribute("anon");
+
+			long logid = 0;
+			String logType = null, logAction = null;
+			List<String> logParams = null;
+
+			if (element.hasAttribute("logid")) {
+				logid = Long.parseLong(element.getAttribute("logid"));
+				logType = element.getAttribute("logtype");
+				logAction = element.getAttribute("logaction");
+				logParams = new ArrayList<String>();
+
+				NodeList paramTags = element.getElementsByTagName("param");
+
+				for (int i = 0; i < paramTags.getLength(); i++) {
+					logParams.add(paramTags.item(i).getTextContent());
+				}
+			}
+
+			return new MediaWiki.RecentChange(changeType, namespaceID, fullName, pageID, rcid, revid, oldRevid, username, oldLen, newLen, timestamp, comment, isNew, bot, minor, anonymous, logid, logType, logAction, logParams);
+		}
+
+		@Override
+		protected synchronized void cacheUpcoming() throws Exception {
+			// Get the next page of recent changes from the API.
+			final Map<String, String> pageGetParams = new TreeMap<String, String>(getParams);
+			if (getContinuationName() != null) {
+				pageGetParams.put(getContinuationName(), getContinuation());
+			}
+
+			final String url = createApiGetUrl(pageGetParams);
+
+			networkLock.lock();
+			try {
+				final InputStream in = get(url);
+				final Document xml = parse(in);
+				checkError(xml);
+
+				final NodeList recentchangesTags = xml.getElementsByTagName("recentchanges");
+
+				if (recentchangesTags.getLength() > 0) {
+					final Element recentchangesTag = (Element) recentchangesTags.item(0);
+
+					setUpcoming(recentchangesTag.getElementsByTagName("rc"));
+				}
+
+				processContinuation(xml, "recentchanges");
 			} finally {
 				networkLock.unlock();
 			}
@@ -6814,6 +7061,244 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
+	public class RecentChange extends PageNameComponents {
+		private final String changeType, username, comment, logType, logAction;
+
+		private final long rcid, revid, oldRevid, oldLen, newLen, logid;
+
+		private final boolean isNew, bot, minor, anonymous;
+
+		private final Date timestamp;
+
+		private final List<String> logParameters;
+
+		RecentChange(final String changeType, final long namespaceID, final String title, final long pageid, final long rcid, final long revid, final long oldRevid, final String username, final long oldLen, final long newLen, final Date timestamp, final String comment, final boolean isNew, final boolean bot, final boolean minor, final boolean anonymous, final long logid, final String logType, final String logAction, final List<String> logParams) throws IOException {
+			super(title, namespaceID, pageid);
+			this.changeType = changeType;
+			this.rcid = rcid;
+			this.revid = revid;
+			this.oldRevid = oldRevid;
+			this.username = username;
+			this.oldLen = oldLen;
+			this.newLen = newLen;
+			this.timestamp = timestamp;
+			this.comment = comment;
+			this.isNew = isNew;
+			this.bot = bot;
+			this.minor = minor;
+			this.anonymous = anonymous;
+			this.logid = logid;
+			this.logType = logType;
+			this.logAction = logAction;
+			this.logParameters = logParams != null ? Collections.unmodifiableList(logParams) : null;
+		}
+
+		/**
+		 * Returns the type of change embodied in this <tt>RecentChange</tt>.
+		 * This is one of the values of <tt>RecentChangeType</tt>.
+		 * 
+		 * @return the type of change embodied in this <tt>RecentChange</tt>
+		 * @see RecentChangeType
+		 */
+		public String getChangeType() {
+			return changeType;
+		}
+
+		/**
+		 * Returns the recent change ID of the change embodied in this
+		 * <tt>RecentChange</tt>. This is used for recent changes patrolling.
+		 * 
+		 * @return the recent change ID of the change embodied in this
+		 *         <tt>RecentChange</tt>
+		 */
+		public long getRcid() {
+			return rcid;
+		}
+
+		/**
+		 * Returns the revision ID of a page after the change embodied in this
+		 * <tt>RecentChange</tt>. This does not apply to log entries.
+		 * 
+		 * @return the revision ID of a page after the change embodied in this
+		 *         <tt>RecentChange</tt>
+		 */
+		public long getNewRevisionID() {
+			return revid;
+		}
+
+		/**
+		 * Returns the revision ID of a page before the change embodied in this
+		 * <tt>RecentChange</tt>. This does not apply to log entries and new
+		 * pages.
+		 * 
+		 * @return the revision ID of a page before the change embodied in this
+		 *         <tt>RecentChange</tt>
+		 */
+		public long getOldRevisionID() {
+			return oldRevid;
+		}
+
+		/**
+		 * Returns the name of the user who introduced the change embodied in
+		 * this <tt>RecentChange</tt>.
+		 * 
+		 * @return the name of the user who introduced the change embodied in
+		 *         this <tt>RecentChange</tt>
+		 */
+		public String getUserName() {
+			return username;
+		}
+
+		/**
+		 * Returns the comment given for the change embodied in this
+		 * <tt>RecentChange</tt>.
+		 * 
+		 * @return the comment given for the change embodied in this
+		 *         <tt>RecentChange</tt>
+		 */
+		public String getComment() {
+			return comment;
+		}
+
+		/**
+		 * Returns whether the change embodied in this <tt>RecentChange</tt> has
+		 * created a new page. Essentially, this is similar to
+		 * <code>getChangeType().equals("new")</code>, but is a separate flag in
+		 * the API's result for <tt>list=recentchanges</tt>.
+		 * 
+		 * @return whether the change embodied in this <tt>RecentChange</tt> has
+		 *         created a new page
+		 */
+		public boolean isNewPage() {
+			return isNew;
+		}
+
+		/**
+		 * Returns whether the change embodied in this <tt>RecentChange</tt> is
+		 * a minor edit. This does not apply to log entries.
+		 * 
+		 * @return whether the change embodied in this <tt>RecentChange</tt> is
+		 *         a minor edit
+		 */
+		public boolean isMinorEdit() {
+			return minor;
+		}
+
+		/**
+		 * Returns whether the change embodied in this <tt>RecentChange</tt> is
+		 * a bot action.
+		 * 
+		 * @return whether the change embodied in this <tt>RecentChange</tt> is
+		 *         a bot action
+		 */
+		public boolean isBotAction() {
+			return bot;
+		}
+
+		/**
+		 * Returns whether the change embodied in this <tt>RecentChange</tt> was
+		 * made by an anonymous user.
+		 * 
+		 * @return whether the change embodied in this <tt>RecentChange</tt> was
+		 *         made by an anonymous user
+		 */
+		public boolean isAnonymousAction() {
+			return anonymous;
+		}
+
+		/**
+		 * Returns the date and time at which the change embodied in this
+		 * <tt>RecentChange</tt> was made.
+		 * 
+		 * @return the date and time at which the change embodied in this
+		 *         <tt>RecentChange</tt> was made
+		 */
+		public Date getTimestamp() {
+			return timestamp;
+		}
+
+		/**
+		 * Returns the length of a page after the change embodied in this
+		 * <tt>RecentChange</tt>. This does not apply to log entries.
+		 * 
+		 * @return the length of a page after the change embodied in this
+		 *         <tt>RecentChange</tt>
+		 */
+		public long getNewLength() {
+			return newLen;
+		}
+
+		/**
+		 * Returns the length of a page before the change embodied in this
+		 * <tt>RecentChange</tt>. This does not apply to log entries and new
+		 * pages.
+		 * 
+		 * @return the length a page before the change embodied in this
+		 *         <tt>RecentChange</tt>
+		 */
+		public long getOldLength() {
+			return oldLen;
+		}
+
+		/**
+		 * Returns the ID of the log entry representing the change embodied in
+		 * this <tt>RecentChange</tt>. This applies only to log entries.
+		 * 
+		 * @return the ID of the log entry representing the change embodied in
+		 *         this <tt>RecentChange</tt>
+		 */
+		public long getLogID() {
+			return logid;
+		}
+
+		/**
+		 * Returns the name of the log containing the log entry representing the
+		 * change embodied in this <tt>RecentChange</tt>. This applies only to
+		 * log entries.
+		 * <p>
+		 * The return value is usually drawn from the constants in
+		 * <tt>StandardLogEntryType</tt>.
+		 * 
+		 * @return the name of the log containing the log entry representing the
+		 *         change embodied in this <tt>RecentChange</tt>
+		 * @see StandardLogEntryType
+		 */
+		public String getLogType() {
+			return logType;
+		}
+
+		/**
+		 * Returns the name of the log action representing the change embodied
+		 * in this <tt>RecentChange</tt>. This applies only to log entries.
+		 * 
+		 * @return the name of the log action representing the change embodied
+		 *         in this <tt>RecentChange</tt>
+		 */
+		public String getLogAction() {
+			return logAction;
+		}
+
+		/**
+		 * Returns the log parameters attached to the change embodied in this
+		 * <tt>RecentChange</tt>. This applies only to log entries.
+		 * <p>
+		 * The returned list is not modifiable.
+		 * 
+		 * @return the log parameters attached to the change embodied in this
+		 *         <tt>RecentChange</tt>
+		 */
+		public List<String> getLogParameters() {
+			return logParameters;
+		}
+
+		@Override
+		public String toString() {
+			// RecentChange[2544102: "PAGENAME" 1337 <- 1336 (NEWSIZE <-
+			// OLDSIZE) @ DATE by USER, minor, anonymous, bot (COMMENT)]
+			return String.format("RecentChange[%d: %s \"%s\" %d <- %d (%d <- %d bytes) @ %s by %s%s%s%s %s]", rcid, changeType, getFullPageName(), revid, oldRevid, newLen, oldLen, timestamp, username, minor ? ", minor" : "", anonymous ? ", anonymous" : "", bot ? ", bot" : "", "(" + comment + ")");
+		}
+	}
+
 	/**
 	 * An edit token returned by the various <tt>start___</tt> methods, which is
 	 * used to perform the action and detect conflicts.
@@ -7077,6 +7562,97 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		 * Actions require that users be sysops.
 		 */
 		public static final String SYSOPS = "sysop";
+	}
+
+	/**
+	 * Useful constants for recent change types.
+	 */
+	public static class RecentChangeType {
+		/**
+		 * The recent change is a regular page edit.
+		 */
+		public static final String EDIT = "edit";
+
+		/**
+		 * The recent change is a page creation.
+		 */
+		public static final String NEW_PAGE = "new";
+
+		/**
+		 * The recent change is a log entry.
+		 */
+		public static final String LOG_ENTRY = "log";
+	}
+
+	/**
+	 * Useful constants for log entry types. These do not form an exhaustive
+	 * list; you may encounter log events that have another name.
+	 */
+	public static class StandardLogEntryType {
+		/**
+		 * The log entry is from the block log. Possible actions are
+		 * <code>"block"</code>, <code>"unblock"</code> and
+		 * <code>"reblock"</code>.
+		 */
+		public static final String BLOCK = "block";
+
+		/**
+		 * The log entry is from the protection log. Possible actions are
+		 * <code>"protect"</code>, <code>"modify"</code>,
+		 * <code>"unprotect"</code> and <code>"move_prot"</code>.
+		 */
+		public static final String PROTECTION = "protect";
+
+		/**
+		 * The log entry is from the user rights log. Possible actions are
+		 * <code>"rights"</code> and <code>"autopromote"</code>.
+		 */
+		public static final String USER_RIGHTS = "rights";
+
+		/**
+		 * The log entry is from the upload log. Possible actions are
+		 * <code>"upload"</code>, <code>"overwrite"</code> and
+		 * <code>"revert"</code>.
+		 */
+		public static final String UPLOAD = "upload";
+
+		/**
+		 * The log entry is from the import log. Possible actions are
+		 * <code>"upload"</code> and <code>"interwiki"</code>.
+		 */
+		public static final String IMPORT = "import";
+
+		/**
+		 * The log entry is from the move log. Possible actions are
+		 * <code>"move"</code> and <code>"move_redir"</code>.
+		 */
+		public static final String MOVE = "move";
+
+		/**
+		 * The log entry is from the deletion log. Possible actions are
+		 * <code>"delete"</code>, <code>"restore"</code>,
+		 * <code>"revision"</code> and <code>"event"</code>.
+		 */
+		public static final String DELETION = "delete";
+
+		/**
+		 * The log entry is from the patrol log. The only possible action is
+		 * <code>"patrol"</code>.
+		 */
+		public static final String PATROL = "patrol";
+
+		/**
+		 * The log entry is from the abuse filter log. Possible actions are
+		 * <code>"modify"</code> and <code>"hit"</code>.
+		 */
+		public static final String ABUSE_FILTER = "abusefilter";
+
+		/**
+		 * The log entry is from the user creation log. Possible actions are
+		 * <code>"newusers"</code>, <code>"create"</code>,
+		 * <code>"create2"</code> and <code>"autocreate"</code>.
+		 */
+		public static final String USER_CREATION = "newusers";
 	}
 
 	/**
