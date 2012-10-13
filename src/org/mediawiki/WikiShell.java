@@ -60,6 +60,10 @@ import org.mediawiki.MediaWiki.MediaWikiException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class WikiShell {
+	// TODO Replace/text/replaceregex for 'for' subshell page list
+	// TODO Special:Recentchanges
+	// TODO Detect URL-encoded user-specified page names
+	
 	private static final Map<String, Command> builtinCommands = new TreeMap<String, Command>(String.CASE_INSENSITIVE_ORDER);
 
 	/**
