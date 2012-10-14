@@ -5806,7 +5806,14 @@ public class WikiShell {
 		if (refuseLogin)
 			return;
 		try {
-			if (wiki.getCurrentUser().isAnonymous()) {
+			MediaWiki.CurrentUser currentUser;
+			work("Checking user login...");
+			try {
+				currentUser = wiki.getCurrentUser();
+			} finally {
+				workEnd();
+			}
+			if (currentUser.isAnonymous()) {
 				if (inputBoolean("Would you like to log in? [y/N] ", false)) {
 					final Login login = new Login();
 
