@@ -60,10 +60,9 @@ import org.mediawiki.MediaWiki.MediaWikiException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class WikiShell {
-	// TODO Replace/text/replaceregex for 'for' subshell page list
 	// TODO Special:Recentchanges
 	// TODO Detect URL-encoded user-specified page names
-	
+
 	private static final Map<String, Command> builtinCommands = new TreeMap<String, Command>(String.CASE_INSENSITIVE_ORDER);
 
 	/**
@@ -458,6 +457,13 @@ public class WikiShell {
 				}
 			}
 			pageListModifiers.put("intersect", new IntersectPages());
+			{
+				final ReplaceInPageNames r = new ReplaceInPageNames();
+				for (final String s : Arrays.asList("replace", "replacetext")) {
+					pageListModifiers.put(s, r);
+				}
+			}
+			pageListModifiers.put("replaceregex", new ReplaceRegexPageNames());
 			{
 				final RemoveDuplicates r = new RemoveDuplicates();
 				for (final String s : Arrays.asList("removedups", "removedupes", "removeduplicates")) {
@@ -1607,14 +1613,6 @@ public class WikiShell {
 				workEnd();
 			}
 			System.err.println("Connected.");
-
-			if (context.wiki != null) {
-				try {
-					context.wiki.logOut();
-				} catch (final Throwable t) {
-					// Eat
-				}
-			}
 
 			context.wiki = newWiki;
 		}
@@ -5480,6 +5478,84 @@ public class WikiShell {
 			System.err.println("Interactively chooses which pages to keep in the list of pages used by the current 'for' subshell.");
 			System.err.println();
 			System.err.println("choose");
+		}
+	}
+
+	public static class ReplaceInPageNames implements PageListModifier {
+		public void modify(List<String> pages, PageListModifierContext context) throws IOException, NullPointerException, CancellationException {
+			final String findText = inputMandatory("   find: ");
+			final String replaceText = input("replace: ");
+
+			final boolean caseSensitive = inputBoolean("case sensitive [y/N]: ", false);
+
+			for (int i = 0; i < pages.size(); i++) {
+				String pageName = pages.get(i);
+				// ciContent is in lower case for case-insensitive searches. Use
+				// 'content' to access the actual content that will be put back
+				// on
+				// the wiki.
+				String ciPageName = caseSensitive ? pageName : pageName.toLowerCase();
+				// ciFindText is in lower case for case-insensitive searches.
+				final String ciFindText = caseSensitive ? findText : findText.toLowerCase();
+				final String ciReplaceText = caseSensitive ? replaceText : replaceText.toLowerCase();
+				int cur = 0, index;
+
+				while ((index = ciPageName.indexOf(ciFindText, cur)) != -1) {
+					cur = index + findText.length();
+					pageName = pageName.substring(0, index) + replaceText + pageName.substring(cur);
+
+					ciPageName = ciPageName.substring(0, index) + ciReplaceText + ciPageName.substring(cur);
+
+					cur += replaceText.length() - findText.length();
+				}
+
+				pages.set(i, pageName);
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Finds and replaces text in the current 'for' subshell's page list.");
+			System.err.println();
+			System.err.println("replace[text]");
+			System.err.println();
+			System.err.println("You will be asked to provide the search and replacement text, then the case-sensitivity. Following this, your selected replacement will automatically be applied to all occurrences of the search text in the page list.");
+		}
+	}
+
+	public static class ReplaceRegexPageNames implements PageListModifier {
+		public void modify(List<String> pages, PageListModifierContext context) throws IOException, NullPointerException, CancellationException {
+			final String find = inputMandatory("find regex: ");
+			try {
+				Pattern.compile(find);
+			} catch (final PatternSyntaxException pse) {
+				System.err.println(pse.getClass().getName() + ": " + pse.getLocalizedMessage());
+				throw new CancellationException();
+			}
+			final String replaceText = input("replace (with $1, $2, ... or \\1, \\2 for captures): ");
+
+			final boolean caseSensitive = inputBoolean("case sensitive [y/N]: ", false);
+
+			final Pattern findRegex = Pattern.compile(find, caseSensitive ? 0 : Pattern.CASE_INSENSITIVE);
+
+			for (int i = 0; i < pages.size(); i++) {
+				final StringBuffer newContent = new StringBuffer();
+				final Matcher m = findRegex.matcher(pages.get(i));
+				while (m.find()) {
+					m.appendReplacement(newContent, replaceText);
+				}
+
+				m.appendTail(newContent);
+
+				pages.set(i, newContent.toString());
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Finds and replaces text in the current 'for' subshell's page list using a regular expression.");
+			System.err.println();
+			System.err.println("replaceregex");
+			System.err.println();
+			System.err.println("You will be asked to provide the search regular expression and replacement text, then the case-sensitivity. Following this, your selected replacement will automatically be applied to all occurrences of the search text in the page list. Regular expressions are outside the scope of this documentation.");
 		}
 	}
 
