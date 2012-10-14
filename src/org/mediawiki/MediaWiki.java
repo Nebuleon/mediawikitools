@@ -3312,7 +3312,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		@Override
 		public MediaWiki.RecentChange convert(final Element element) throws Exception {
 			/*-
-			 * <rc type="new" ns="3" title="User talk:MelanieCody" rcid="532895423" pageid="37295049" revid="517240270" old_revid="0" user="MelanieCody" new="" oldlen="0" newlen="8613" timestamp="2012-10-11T18:00:36Z" comment="[[WP:AES|←]]Created page with 'Susan Penfield (born January 19, 1946--) is an American linguistic anthropologist, educator and researcher of American Indian Languages, whose work centers on en...'"/>
+			 * <rc type="new" ns="3" title="User talk:MelanieCody" rcid="532895423" pageid="37295049" revid="517240270" old_revid="0" user="MelanieCody" new="" oldlen="0" newlen="8613" timestamp="2012-10-11T18:00:36Z" comment="Created page with 'Susan Penfield (born January 19, 1946--) is an American linguistic anthropologist, educator and researcher of American Indian Languages, whose work centers on en...'"/>
 			 * 
 			 * <rc type="edit" ns="6" title="File:Alsou (Russian album).jpeg" rcid="532895424" pageid="34282817" revid="517240271" old_revid="469617691" user="Legobot" bot="" minor="" oldlen="378" newlen="402" timestamp="2012-10-11T18:00:36Z" comment="Bot: Updating license tag(s) with image has rationale=yes"/>
 			 * 
