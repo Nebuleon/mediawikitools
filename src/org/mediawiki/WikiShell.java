@@ -17,6 +17,7 @@ import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
 import java.io.Serializable;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,6 +33,7 @@ import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.CancellationException;
@@ -60,7 +62,6 @@ import org.mediawiki.MediaWiki.MediaWikiException;
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 public class WikiShell {
-	// TODO Special:Recentchanges
 	// TODO Detect URL-encoded user-specified page names
 
 	private static final Map<String, Command> builtinCommands = new TreeMap<String, Command>(String.CASE_INSENSITIVE_ORDER);
@@ -409,6 +410,18 @@ public class WikiShell {
 					builtinCommands.put(s, a);
 				}
 			}
+			{
+				final RecentChanges r = new RecentChanges();
+				for (final String s : Arrays.asList("rc", "recentchanges")) {
+					builtinCommands.put(s, r);
+				}
+			}
+			{
+				final RecentChangesStream r = new RecentChangesStream();
+				for (final String s : Arrays.asList("rcstream", "recentchangestream", "recentchangesstream")) {
+					builtinCommands.put(s, r);
+				}
+			}
 			builtinCommands.put("purge", new Purge());
 			{
 				final ExpandTemplatesInWikitext e = new ExpandTemplatesInWikitext();
@@ -585,6 +598,8 @@ public class WikiShell {
 									if (!inputBoolean("Retry? [Y/n] ", true)) {
 										continue prompt;
 									}
+								} catch (final InterruptedException ie) {
+									continue prompt;
 								}
 							}
 						} catch (final CancellationException ce) {
@@ -930,8 +945,9 @@ public class WikiShell {
 		 * @throws ParseException
 		 *             if reading the token from the wiki throws
 		 *             <tt>ParseException</tt>
+		 * @throws InterruptedException
 		 */
-		void getToken(CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException;
+		void getToken(CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException;
 
 		/**
 		 * If no essential input is in <code>context.essentialInput</code> from
@@ -1022,8 +1038,10 @@ public class WikiShell {
 		 * @throws ParseException
 		 *             if reading or writing on the wiki throws
 		 *             <tt>ParseException</tt>
+		 * @throws InterruptedException
+		 *             if the thread reading from the wiki is interrupted
 		 */
-		void perform(CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException;
+		void perform(CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException;
 
 		/**
 		 * Displays usage information for this <tt>Command</tt> on the standard
@@ -1097,7 +1115,7 @@ public class WikiShell {
 
 		public void getPageName(final CommandContext context) throws IOException, NullPointerException, CancellationException {}
 
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {}
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {}
 
 		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {}
 
@@ -1849,7 +1867,7 @@ public class WikiShell {
 	}
 
 	public static class PageInformation extends AbstractPageReadCommand {
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			Iterator<MediaWiki.Page> pi;
 			work("Getting page information...");
 			try {
@@ -1878,7 +1896,7 @@ public class WikiShell {
 	}
 
 	public static class InterlanguageLinks extends AbstractPageReadCommand {
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			Iterator<MediaWiki.InterlanguageLink> li;
 			work("Getting interlanguage links...");
 			try {
@@ -1947,7 +1965,7 @@ public class WikiShell {
 	}
 
 	public static class Links extends AbstractPageReadCommand implements IterableCommand {
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			final Iterator<String> si = iterator(context);
 
 			String s;
@@ -1982,7 +2000,7 @@ public class WikiShell {
 	}
 
 	public static class ExternalLinks extends AbstractPageReadCommand {
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			Iterator<String> li;
 			work("Getting external links...");
 			try {
@@ -2016,7 +2034,7 @@ public class WikiShell {
 			context.pageName = inputMandatory("full transcluding page name: ");
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			final Iterator<String> si = iterator(context);
 
 			String s;
@@ -2067,7 +2085,7 @@ public class WikiShell {
 			context.auxiliaryInput = new Object[] { namespaceString, redirect };
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
 			final Iterator<String> si = iterator(context);
 
 			String s;
@@ -2140,7 +2158,7 @@ public class WikiShell {
 			context.auxiliaryInput = new Object[] { namespaceString, redirect };
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
 			final Iterator<String> si = iterator(context);
 
 			String s;
@@ -2218,7 +2236,7 @@ public class WikiShell {
 			context.auxiliaryInput = new Object[] { namespaceString, redirect };
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
 			final Iterator<String> si = iterator(context);
 
 			String s;
@@ -2275,7 +2293,7 @@ public class WikiShell {
 	}
 
 	public static class CategoryInformation extends AbstractPageReadCommand {
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
 			if (namespaces.getNamespaceForPage(context.pageName).getID() != MediaWiki.StandardNamespace.CATEGORY) {
 				context.pageName = namespaces.getNamespace(MediaWiki.StandardNamespace.CATEGORY).getFullPageName(namespaces.removeNamespacePrefix(context.pageName));
@@ -2317,7 +2335,7 @@ public class WikiShell {
 			context.pageName = inputMandatory("user name: ");
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			Iterator<MediaWiki.User> ui;
 			work("Getting user information...");
 			try {
@@ -2426,7 +2444,7 @@ public class WikiShell {
 			context.auxiliaryInput = new Object[] { fullPageName, languageCode };
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			final String text = (String) context.essentialInput;
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 			final String fullPageName = (String) auxiliaryInput[0], languageCode = (String) auxiliaryInput[1];
@@ -2716,7 +2734,7 @@ public class WikiShell {
 			context.auxiliaryInput = new Object[] { start, end };
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 			final Object start = auxiliaryInput[0], end = auxiliaryInput[1];
 
@@ -2837,7 +2855,7 @@ public class WikiShell {
 			context.auxiliaryInput = new Object[] { start, end };
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
 			if (namespaces.getNamespaceForPage(context.pageName).getID() != MediaWiki.StandardNamespace.FILE) {
 				context.pageName = namespaces.getNamespace(MediaWiki.StandardNamespace.FILE).getFullPageName(namespaces.removeNamespacePrefix(context.pageName));
@@ -2898,7 +2916,7 @@ public class WikiShell {
 			}
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
 			if (namespaces.getNamespaceForPage(context.pageName).getID() != MediaWiki.StandardNamespace.FILE) {
 				context.pageName = namespaces.getNamespace(MediaWiki.StandardNamespace.FILE).getFullPageName(namespaces.removeNamespacePrefix(context.pageName));
@@ -2964,7 +2982,7 @@ public class WikiShell {
 	}
 
 	public static class Read extends AbstractPageReadCommand {
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			Iterator<MediaWiki.Revision> ri;
 			work("Getting revision...");
 			try {
@@ -3023,7 +3041,7 @@ public class WikiShell {
 			}
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			Iterator<MediaWiki.Revision> ri;
 			work("Getting revision...");
 			try {
@@ -3057,7 +3075,7 @@ public class WikiShell {
 	}
 
 	public static class PageCategories extends AbstractPageReadCommand implements IterableCommand {
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			Iterator<MediaWiki.CategoryMembership> ci;
 			work("Getting categories...");
 			try {
@@ -3158,7 +3176,7 @@ public class WikiShell {
 			}
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 			final String start = (String) auxiliaryInput[0], end = (String) auxiliaryInput[1], prefix = (String) auxiliaryInput[2];
 			final boolean ascendingOrder = (Boolean) auxiliaryInput[3];
@@ -3259,7 +3277,7 @@ public class WikiShell {
 			}
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 			final String start = (String) auxiliaryInput[0], prefix = (String) auxiliaryInput[1], sha1 = (String) auxiliaryInput[2];
 			final boolean ascendingOrder = (Boolean) auxiliaryInput[3];
@@ -3379,7 +3397,7 @@ public class WikiShell {
 			}
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
 			final Iterator<String> si = iterator(context);
 
 			String s;
@@ -3471,7 +3489,7 @@ public class WikiShell {
 			}
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
 			final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
 			if (namespaces.getNamespaceForPage(context.pageName).getID() != MediaWiki.StandardNamespace.CATEGORY) {
 				context.pageName = namespaces.getNamespace(MediaWiki.StandardNamespace.CATEGORY).getFullPageName(namespaces.removeNamespacePrefix(context.pageName));
@@ -3621,7 +3639,7 @@ public class WikiShell {
 			}
 		}
 
-		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
 			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 			final String start = (String) auxiliaryInput[0], prefix = (String) auxiliaryInput[1], group = (String) auxiliaryInput[2];
 
@@ -3686,9 +3704,271 @@ public class WikiShell {
 		}
 	}
 
+	public static class RecentChanges extends AbstractCommand {
+		@Override
+		public void getAuxiliaryInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.auxiliaryInput != null)
+				return;
+			if (inputBoolean("Add some filters? [y/N] ", false)) {
+				try {
+					final String earliestString = input("start time [y-m-dTh:m:sZ] (<indefinite>): ", null);
+					Date earliest = null;
+					if (earliestString != null) {
+						earliest = MediaWiki.timestampToDate(earliestString);
+					}
+					final String latestString = input("end time [y-m-dTh:m:sZ] (<indefinite>): ", null);
+					Date latest = null;
+					if (latestString != null) {
+						latest = MediaWiki.timestampToDate(latestString);
+					}
+					final boolean chronologicalOrder = inputBoolean("chronological order [y/N]: ", false);
+					final int elementCount = Integer.parseInt(input("get this many recent changes at once (10): ", "10"));
+					final String showUser = input("show only this user (<show all>): ", null);
+					final String hideUser = input("hide this user (<hide none>): ", null);
+					final boolean showRegularEdits = inputBoolean("show regular edits [Y/n]: ", true);
+					final boolean showNewPages = inputBoolean("show new pages [Y/n]: ", true);
+					final boolean showLogEntries = inputBoolean("show log entries [Y/n]: ", true);
+					final Boolean showMinorEdits = inputBoolean("restrict to minor [y] or non-minor [n] edits (<don't care>): ", null);
+					final Boolean showBotActions = inputBoolean("restrict to bots [y] or non-bots [n] (<don't care>): ", null);
+					final Boolean showAnonymousActions = inputBoolean("restrict to anonymous [y] or registered users [n] (<don't care>): ", null);
+					final Boolean showRedirects = inputBoolean("restrict to redirects [y] or non-redirects [n] (<don't care>): ", null);
+					final Boolean showPatrolled = inputBoolean("restrict to patrolled [y] or non-patrolled edits [n] (<don't care>): ", null);
+
+					final String namespaceString = input("restrict to changes in this namespace name or number (<all>): ", null);
+					context.auxiliaryInput = new Object[] { earliest, latest, chronologicalOrder, elementCount, showUser, hideUser, showRegularEdits, showNewPages, showLogEntries, showMinorEdits, showBotActions, showAnonymousActions, showRedirects, showPatrolled, namespaceString };
+				} catch (NumberFormatException nfe) {
+					System.err.println("Invalid input");
+					throw new CancellationException();
+				} catch (ParseException pe) {
+					System.err.println("Invalid input");
+					throw new CancellationException();
+				}
+			} else {
+				try {
+					final int elementCount = Integer.parseInt(input("get this many recent changes at once (10): ", "10"));
+					context.auxiliaryInput = new Object[] { null, null, false, elementCount, null, null, true, true, true, null, null, null, null, null, null };
+				} catch (NumberFormatException nfe) {
+					System.err.println("Invalid input");
+					throw new CancellationException();
+				}
+			}
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException, InterruptedException {
+			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+			final Date earliest = (Date) auxiliaryInput[0], latest = (Date) auxiliaryInput[1];
+			final boolean chronologicalOrder = (Boolean) auxiliaryInput[2], showRegularEdits = (Boolean) auxiliaryInput[6], showNewPages = (Boolean) auxiliaryInput[7], showLogEntries = (Boolean) auxiliaryInput[8];
+			final Boolean showMinorEdits = (Boolean) auxiliaryInput[9], showBotActions = (Boolean) auxiliaryInput[10], showAnonymousActions = (Boolean) auxiliaryInput[11], showRedirects = (Boolean) auxiliaryInput[12], showPatrolled = (Boolean) auxiliaryInput[13];
+			final int elementCount = (Integer) auxiliaryInput[3];
+			final String showUser = (String) auxiliaryInput[4], hideUser = (String) auxiliaryInput[5], namespaceString = (String) auxiliaryInput[14];
+			long[] namespaceIDs = null;
+
+			if (namespaceString != null) {
+				final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
+				MediaWiki.Namespace namespace;
+				try {
+					namespace = namespaces.getNamespace(Long.parseLong(namespaceString));
+				} catch (final NumberFormatException nfe) {
+					namespace = namespaces.getNamespace(namespaceString);
+				}
+				if (namespace != null) {
+					namespaceIDs = new long[] { namespace.getID() };
+				} else {
+					System.err.println(namespaceString + ": No such namespace");
+					throw new CancellationException();
+				}
+			}
+
+			Iterator<MediaWiki.RecentChange> rci;
+			work("Getting users...");
+			try {
+				rci = context.wiki.recentChanges(earliest, latest, chronologicalOrder, elementCount, showUser, hideUser, showRegularEdits, showNewPages, showLogEntries, showMinorEdits, showBotActions, showAnonymousActions, showRedirects, showPatrolled, false /*- getPatrolInformation */, namespaceIDs);
+			} finally {
+				workEnd();
+			}
+
+			MediaWiki.RecentChange rc;
+			while ((rc = next(rci, "Getting recent changes...")) != null) {
+				displayRecentChange(rc, context.output);
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Displays recent changes on the current wiki.");
+			System.err.println();
+			System.err.println("{rc | recentchanges}");
+			System.err.println();
+			System.err.println("The list may be filtered in many ways.");
+		}
+	}
+
+	public static class RecentChangesStream extends AbstractCommand {
+		@Override
+		public void getAuxiliaryInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.auxiliaryInput != null)
+				return;
+			if (inputBoolean("Add some filters? [y/N] ", false)) {
+				try {
+					final String earliestString = input("start time [y-m-dTh:m:sZ] (<now>): ", null);
+					Date earliest = null;
+					if (earliestString != null) {
+						earliest = MediaWiki.timestampToDate(earliestString);
+					}
+					final int elementCount = Integer.parseInt(input("get this many recent changes at once (10): ", "10"));
+					final String showUser = input("show only this user (<show all>): ", null);
+					final String hideUser = input("hide this user (<hide none>): ", null);
+					final boolean showRegularEdits = inputBoolean("show regular edits [Y/n]: ", true);
+					final boolean showNewPages = inputBoolean("show new pages [Y/n]: ", true);
+					final boolean showLogEntries = inputBoolean("show log entries [Y/n]: ", true);
+					final Boolean showMinorEdits = inputBoolean("restrict to minor [y] or non-minor [n] edits (<don't care>): ", null);
+					final Boolean showBotActions = inputBoolean("restrict to bots [y] or non-bots [n] (<don't care>): ", null);
+					final Boolean showAnonymousActions = inputBoolean("restrict to anonymous [y] or registered users [n] (<don't care>): ", null);
+					final Boolean showRedirects = inputBoolean("restrict to redirects [y] or non-redirects [n] (<don't care>): ", null);
+					final Boolean showPatrolled = inputBoolean("restrict to patrolled [y] or non-patrolled edits [n] (<don't care>): ", null);
+
+					final String namespaceString = input("restrict to changes in this namespace name or number (<all>): ", null);
+					context.auxiliaryInput = new Object[] { earliest, elementCount, showUser, hideUser, showRegularEdits, showNewPages, showLogEntries, showMinorEdits, showBotActions, showAnonymousActions, showRedirects, showPatrolled, namespaceString, null };
+				} catch (NumberFormatException nfe) {
+					System.err.println("Invalid input");
+					throw new CancellationException();
+				} catch (ParseException pe) {
+					System.err.println("Invalid input");
+					throw new CancellationException();
+				}
+			} else {
+				try {
+					final int elementCount = Integer.parseInt(input("get this many recent changes at once (10): ", "10"));
+					context.auxiliaryInput = new Object[] { null, elementCount, null, null, true, true, true, null, null, null, null, null, null, null };
+				} catch (NumberFormatException nfe) {
+					System.err.println("Invalid input");
+					throw new CancellationException();
+				}
+			}
+			try {
+				final int waitSeconds = Integer.parseInt(input("update every this many seconds (10): ", "10"));
+				((Object[]) context.auxiliaryInput)[13] = waitSeconds;
+			} catch (NumberFormatException nfe) {
+				System.err.println("Invalid input");
+				throw new CancellationException();
+			}
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, CancellationException, NullPointerException, ParseException {
+			final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
+			Date earliest = (Date) auxiliaryInput[0];
+			final boolean showRegularEdits = (Boolean) auxiliaryInput[4], showNewPages = (Boolean) auxiliaryInput[5], showLogEntries = (Boolean) auxiliaryInput[6];
+			final Boolean showMinorEdits = (Boolean) auxiliaryInput[7], showBotActions = (Boolean) auxiliaryInput[8], showAnonymousActions = (Boolean) auxiliaryInput[9], showRedirects = (Boolean) auxiliaryInput[10], showPatrolled = (Boolean) auxiliaryInput[11];
+			final int elementCount = (Integer) auxiliaryInput[1], waitSeconds = (Integer) auxiliaryInput[13];
+			final String showUser = (String) auxiliaryInput[2], hideUser = (String) auxiliaryInput[3], namespaceString = (String) auxiliaryInput[12];
+			long[] namespaceIDs = null;
+
+			if (earliest == null)
+				earliest = new Date();
+
+			if (namespaceString != null) {
+				final MediaWiki.Namespaces namespaces = context.wiki.getNamespaces();
+				MediaWiki.Namespace namespace;
+				try {
+					namespace = namespaces.getNamespace(Long.parseLong(namespaceString));
+				} catch (final NumberFormatException nfe) {
+					namespace = namespaces.getNamespace(namespaceString);
+				}
+				if (namespace != null) {
+					namespaceIDs = new long[] { namespace.getID() };
+				} else {
+					System.err.println(namespaceString + ": No such namespace");
+					throw new CancellationException();
+				}
+			}
+
+			final long[] fNamespaceIDs = namespaceIDs; // for thread below
+			final Date initialEarliest = earliest;
+
+			final Thread recentChangesStreamer = new Thread(new Runnable() {
+				public void run() {
+					Date earliest = initialEarliest;
+					long lastRcidSeen = -1L;
+					while (true) {
+						Iterator<MediaWiki.RecentChange> rci;
+						work("Getting recent changes...");
+						try {
+							rci = context.wiki.recentChanges(earliest, null /*- no latest */, true /*- always chronological */, elementCount, showUser, hideUser, showRegularEdits, showNewPages, showLogEntries, showMinorEdits, showBotActions, showAnonymousActions, showRedirects, showPatrolled, false /*- getPatrolInformation */, fNamespaceIDs);
+						} finally {
+							workEnd();
+						}
+
+						MediaWiki.RecentChange rc;
+						while (true) {
+							try {
+								rc = next(rci, "Getting recent changes...");
+								if (rc == null)
+									break;
+								if (rc.getRcid() > lastRcidSeen) {
+									displayRecentChange(rc, context.output);
+									if (rc.getTimestamp().compareTo(earliest) > 0)
+										earliest = rc.getTimestamp();
+									lastRcidSeen = rc.getRcid();
+								}
+							} catch (InterruptedException ie) {
+								return;
+							} catch (Throwable e) {
+								System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+								work("Error, retrying in 30 seconds...");
+								try {
+									try {
+										Thread.sleep(30000);
+									} catch (InterruptedException ie) {
+										return;
+									}
+								} finally {
+									workEnd();
+								}
+							}
+						}
+
+						try {
+							Thread.sleep((long) waitSeconds * 1000);
+						} catch (InterruptedException ie) {
+							return;
+						}
+					}
+				}
+			});
+			System.err.println("Streaming recent changes. Press Enter to return to the prompt.");
+			recentChangesStreamer.start();
+
+			final Thread streamStopper = new Thread(new Runnable() {
+				public void run() {
+					try {
+						input("", "");
+						recentChangesStreamer.interrupt();
+					} catch (Throwable e) {
+						recentChangesStreamer.interrupt();
+					}
+				}
+			});
+			streamStopper.start();
+
+			try {
+				recentChangesStreamer.join();
+				streamStopper.join();
+			} catch (InterruptedException e) {
+				return;
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Streams recent changes on the current wiki.");
+			System.err.println();
+			System.err.println("{rc | recentchange[s]}stream");
+			System.err.println();
+			System.err.println("The list may be filtered in many ways.");
+		}
+	}
+
 	public static abstract class AbstractWriteCommand extends AbstractPageReadCommand {
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			checkLogin(context.wiki);
@@ -3697,7 +3977,7 @@ public class WikiShell {
 
 	public static abstract class AbstractEditTokenCommand extends AbstractWriteCommand {
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			work("Getting edit token...");
@@ -3916,7 +4196,7 @@ public class WikiShell {
 
 	public static abstract class AbstractReplacementCommand extends AbstractEditTokenCommand {
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			work("Getting page content...");
@@ -4395,7 +4675,7 @@ public class WikiShell {
 
 	public static class MovePage extends AbstractWriteCommand {
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			work("Getting move token...");
@@ -4453,7 +4733,7 @@ public class WikiShell {
 
 	public static class UploadFile extends AbstractWriteCommand {
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			work("Getting upload token...");
@@ -4516,7 +4796,7 @@ public class WikiShell {
 
 	public static class Rollback extends AbstractWriteCommand {
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			work("Getting rollback token...");
@@ -4617,7 +4897,7 @@ public class WikiShell {
 
 	public static class Delete extends AbstractWriteCommand {
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			work("Getting deletion token...");
@@ -4666,7 +4946,7 @@ public class WikiShell {
 
 	public static class Protect extends AbstractWriteCommand {
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			work("Getting protection token...");
@@ -4797,7 +5077,7 @@ public class WikiShell {
 		}
 
 		@Override
-		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException {
+		public void getToken(final CommandContext context) throws IOException, MediaWiki.MediaWikiException, ParseException, InterruptedException {
 			super.getToken(context);
 
 			work("Getting user groups modification token...");
@@ -4991,6 +5271,8 @@ public class WikiShell {
 								if (!inputBoolean("Retry? [Y/n] ", true)) {
 									continue command;
 								}
+							} catch (final InterruptedException e) {
+								continue command;
 							}
 						}
 					} catch (final CancellationException ce) {
@@ -5058,6 +5340,8 @@ public class WikiShell {
 								if (!inputBoolean("Retry? [Y/n] ", true)) {
 									continue command;
 								}
+							} catch (final InterruptedException ie) {
+								continue command;
 							}
 						}
 					}
@@ -5188,6 +5472,8 @@ public class WikiShell {
 						System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 						if (!inputBoolean("Retry? [Y/n] ", true))
 							return;
+					} catch (final InterruptedException ie) {
+						return;
 					}
 				}
 			} catch (final CancellationException ce) {
@@ -5310,6 +5596,8 @@ public class WikiShell {
 										if (!inputBoolean("Retry? [Y/n] ", true)) {
 											continue prompt;
 										}
+									} catch (final InterruptedException ie) {
+										continue prompt;
 									}
 								}
 
@@ -5384,6 +5672,8 @@ public class WikiShell {
 											if (!inputBoolean("Retry? [Y/n] ", true)) {
 												continue nextPage;
 											}
+										} catch (final InterruptedException ie) {
+											continue nextPage;
 										}
 									}
 								}
@@ -5667,6 +5957,8 @@ public class WikiShell {
 						System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 						if (!inputBoolean("Retry? [Y/n] ", true))
 							return;
+					} catch (final InterruptedException ie) {
+						return;
 					}
 				}
 			} catch (final CancellationException ce) {
@@ -5825,6 +6117,8 @@ public class WikiShell {
 						System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 						if (!inputBoolean("Retry? [Y/n] ", true))
 							return;
+					} catch (final InterruptedException ie) {
+						return;
 					}
 				}
 			} catch (final CancellationException ce) {
@@ -5891,7 +6185,7 @@ public class WikiShell {
 		}
 	}
 
-	protected static <T> T next(final Iterator<T> i, final String workLong) throws ParseException, MediaWiki.MediaWikiException, IOException {
+	protected static <T> T next(final Iterator<T> i, final String workLong) throws ParseException, MediaWiki.MediaWikiException, IOException, InterruptedException {
 		work(workLong);
 		try {
 			return next(i);
@@ -5900,7 +6194,7 @@ public class WikiShell {
 		}
 	}
 
-	protected static <T> T next(final Iterator<T> i) throws ParseException, MediaWiki.MediaWikiException, IOException {
+	protected static <T> T next(final Iterator<T> i) throws ParseException, MediaWiki.MediaWikiException, IOException, InterruptedException {
 		try {
 			return i.hasNext() ? i.next() : null;
 		} catch (final MediaWiki.IterationException ie) {
@@ -5911,6 +6205,8 @@ public class WikiShell {
 				throw (MediaWiki.MediaWikiException) t;
 			else if (t instanceof IOException)
 				throw (IOException) t;
+			else if (t instanceof InterruptedException)
+				throw (InterruptedException) t;
 			else if (t instanceof RuntimeException)
 				throw (RuntimeException) t;
 			else if (t instanceof Error)
@@ -5938,6 +6234,8 @@ public class WikiShell {
 					System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 					if (!inputBoolean("Retry? [Y/n] ", true))
 						return false;
+				} catch (final InterruptedException ie) {
+					return false;
 				}
 			}
 		} catch (final CancellationException ce) {
@@ -5998,6 +6296,89 @@ public class WikiShell {
 		if (user.getBlockingUser() != null) {
 			output.println(String.format(" blocked by %s (%s)", user.getBlockingUser(), user.getBlockReason()));
 		}
+	}
+
+	private static final SimpleDateFormat timeFormatter = new SimpleDateFormat("HH:mm:ss");
+
+	static {
+		timeFormatter.setTimeZone(TimeZone.getTimeZone("GMT"));
+	}
+
+	protected static void displayRecentChange(final MediaWiki.RecentChange rc, final PrintWriter output) {
+		output.print(timeFormatter.format(rc.getTimestamp()));
+		if (output.checkError())
+			return;
+		output.print("Z ");
+		if (output.checkError())
+			return;
+		output.print(String.format("%10d ", rc.getRcid()));
+		if (output.checkError())
+			return;
+		if (rc.getChangeType().equals(MediaWiki.RecentChangeType.EDIT) || rc.getChangeType().equals(MediaWiki.RecentChangeType.NEW_PAGE)) {
+			output.print(String.format("%10s ", "r" + rc.getNewRevisionID()));
+			if (output.checkError())
+				return;
+			output.print(rc.isNewPage() ? 'N' : ' ');
+			if (output.checkError())
+				return;
+			output.print(rc.isMinorEdit() ? 'm' : ' ');
+			if (output.checkError())
+				return;
+			output.print(rc.isBotAction() ? 'b' : ' ');
+			if (output.checkError())
+				return;
+			output.print(String.format(" (%+6d -> %6d bytes)", rc.getNewLength() - rc.getOldLength(), rc.getNewLength()));
+			if (output.checkError())
+				return;
+			output.print(' ');
+			if (output.checkError())
+				return;
+			output.print(rc.getUserName());
+			if (output.checkError())
+				return;
+			if (rc.isAnonymousAction()) {
+				output.print(", anonymous");
+				if (output.checkError())
+					return;
+			}
+		} else if (rc.getChangeType().equals(MediaWiki.RecentChangeType.LOG_ENTRY)) {
+			output.print(String.format("%10s ", ""));
+			if (output.checkError())
+				return;
+			output.print(rc.isNewPage() ? 'N' : ' ');
+			if (output.checkError())
+				return;
+			output.print(rc.isMinorEdit() ? 'm' : ' ');
+			if (output.checkError())
+				return;
+			output.print(rc.isBotAction() ? 'b' : ' ');
+			if (output.checkError())
+				return;
+			output.print(' ');
+			if (output.checkError())
+				return;
+			output.print(rc.getUserName());
+			if (output.checkError())
+				return;
+			if (rc.isAnonymousAction()) {
+				output.print(", anonymous");
+				if (output.checkError())
+					return;
+			}
+		}
+		output.println();
+		if (output.checkError())
+			return;
+		output.println(" " + rc.getFullPageName());
+		if (output.checkError())
+			return;
+		output.print(' ');
+		if (rc.getChangeType().equals(MediaWiki.RecentChangeType.LOG_ENTRY)) {
+			output.print(String.format("%9d %s/%s: ", rc.getLogID(), rc.getLogType(), rc.getLogAction()));
+			if (output.checkError())
+				return;
+		}
+		output.println(rc.getComment());
 	}
 
 	public static class Exit extends AbstractCommand {
