@@ -121,32 +121,79 @@ public class WikiShell {
 
 		MediaWiki wiki = null;
 
+		// If the args specify a wiki, try to connect to it.
+		if (args.length >= 2) {
+			try {
+				wikiDetails: while (true) /*- wiki detail input retry loop */{
+					final CommandContext context = new CommandContext();
+					context.essentialInput = args[0];
+					context.auxiliaryInput = args[1];
+					args = new String[0];
+
+					reconnect: while (true) /*- wiki connection retry loop */{
+						try {
+							connect.perform(context);
+							wiki = context.wiki;
+
+							break wikiDetails; // on success
+						} catch (final IOException e) {
+							System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+							if (!inputBoolean("Retry? [Y/n] ", true)) {
+								break reconnect;
+							}
+						} catch (final MediaWiki.MediaWikiException e) {
+							System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+							if (!inputBoolean("Retry? [Y/n] ", true)) {
+								break reconnect;
+							}
+						}
+					}
+					// If the user said no to retrying, load from disk and ask
+					// for connection details later.
+				}
+			} catch (final CancellationException e) {
+				// Cancelled the initial connection process.
+				System.exit(1);
+				return;
+			} catch (final NullPointerException e) {
+				// End of file received during the initial connection process.
+				System.err.println();
+				return;
+			} catch (final IOException e) {
+				e.printStackTrace();
+				System.exit(1);
+				return;
+			}
+		}
+
 		// Load the initial MediaWiki from disk, saved when the application last
 		// exited.
-		work("Loading wiki information from disk...");
-		try {
+		if (wiki == null) {
+			work("Loading wiki information from disk...");
 			try {
-				final ObjectInputStream loader = new ObjectInputStream(new BufferedInputStream(new FileInputStream(new File(System.getProperty("user.home"), ".wikishell-wiki"))));
 				try {
-					wiki = (MediaWiki) loader.readObject();
+					final ObjectInputStream loader = new ObjectInputStream(new BufferedInputStream(new FileInputStream(new File(System.getProperty("user.home"), ".wikishell-wiki"))));
+					try {
+						wiki = (MediaWiki) loader.readObject();
+					} finally {
+						loader.close();
+					}
 				} finally {
-					loader.close();
+					workEnd();
+					if (wiki != null) {
+						System.err.println("Loaded wiki information from disk");
+					}
 				}
-			} finally {
-				workEnd();
-				if (wiki != null) {
-					System.err.println("Loaded wiki information from disk");
-				}
+			} catch (final FileNotFoundException e) {
+				// The application didn't last exit, or the user deleted his/her
+				// wiki information file.
+			} catch (final ClassNotFoundException e) {
+				System.err.println("Warning: Wiki information cannot be loaded");
+				System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
+			} catch (final IOException e) {
+				System.err.println("Warning: Wiki information cannot be loaded");
+				System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 			}
-		} catch (final FileNotFoundException e) {
-			// The application didn't last exit, or the user deleted his/her
-			// wiki information file.
-		} catch (final ClassNotFoundException e) {
-			System.err.println("Warning: Wiki information cannot be loaded");
-			System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
-		} catch (final IOException e) {
-			System.err.println("Warning: Wiki information cannot be loaded");
-			System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 		}
 
 		if (wiki == null) {
@@ -156,19 +203,12 @@ public class WikiShell {
 				wikiDetails: while (true) /*- wiki detail input retry loop */{
 					final CommandContext context = new CommandContext();
 
-					// Use the command-line details only for the first wiki
-					// connection attempt. If it fails due to IOException or
+					// If this attempt fails due to IOException or
 					// MediaWikiException, that can be retried, but if the user
 					// says no to retrying, come back here to ask for wiki
 					// details.
-					if (args.length >= 2) {
-						context.essentialInput = args[0];
-						context.auxiliaryInput = args[1];
-						args = new String[0];
-					} else {
-						connect.getEssentialInput(context);
-						connect.getAuxiliaryInput(context);
-					}
+					connect.getEssentialInput(context);
+					connect.getAuxiliaryInput(context);
 
 					reconnect: while (true) /*- wiki connection retry loop */{
 						try {
