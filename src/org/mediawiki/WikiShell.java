@@ -1210,7 +1210,7 @@ public class WikiShell {
 			System.err.println();
 			System.err.println("help [<command>] | help [help] (this text)");
 			System.err.println();
-			System.err.println("The command is mandatory and will be requested if not provided. For a list of commands, use the command called 'commands' (or, if your terminal is small, 'lines commands').");
+			System.err.println("The command is optional and this text will be displayed if it is not provided. For a list of commands, use the command called 'commands' (or, if your terminal is small, 'lines commands').");
 		}
 	}
 
