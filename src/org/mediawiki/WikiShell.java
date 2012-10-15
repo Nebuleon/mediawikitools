@@ -1152,7 +1152,7 @@ public class WikiShell {
 		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
 			if (context.essentialInput != null)
 				return;
-			context.essentialInput = inputMandatory("command to get help on: ");
+			context.essentialInput = "help";
 		}
 
 		public void perform(final CommandContext context) throws IOException, MediaWikiException, ParseException {
@@ -1180,9 +1180,9 @@ public class WikiShell {
 		public void help() throws IOException {
 			System.err.println("Displays help on a command.");
 			System.err.println();
-			System.err.println("help [<command>] | help help (this text)");
+			System.err.println("help [<command>] | help [help] (this text)");
 			System.err.println();
-			System.err.println("The command is mandatory and will be requested if not provided. For a list of commands, use the command called 'commands'.");
+			System.err.println("The command is mandatory and will be requested if not provided. For a list of commands, use the command called 'commands' (or, if your terminal is small, 'lines commands').");
 		}
 	}
 
