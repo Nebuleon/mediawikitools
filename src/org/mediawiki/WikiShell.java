@@ -1142,6 +1142,11 @@ public class WikiShell {
 		public CommandContext() {
 			output = new PrintWriter(System.out, true /*- auto-flush */);
 		}
+
+		private void readObject(ObjectInputStream stream) throws IOException, ClassNotFoundException {
+			stream.defaultReadObject();
+			output = new PrintWriter(System.out, true /*- auto-flush */);
+		}
 	}
 
 	public static class PageListModifierContext {
@@ -1152,6 +1157,11 @@ public class WikiShell {
 		public transient PrintWriter output;
 
 		public PageListModifierContext() {
+			output = new PrintWriter(System.out, true /*- auto-flush */);
+		}
+
+		private void readObject(ObjectInputStream stream) throws IOException, ClassNotFoundException {
+			stream.defaultReadObject();
 			output = new PrintWriter(System.out, true /*- auto-flush */);
 		}
 	}
