@@ -2977,7 +2977,7 @@ public class WikiShell {
 				System.err.println();
 				System.err.println("Revision contents saved as " + newName);
 			} else {
-				System.err.println(context.pageName + ": " + MediaWiki.dateToISO8601(timestamp) + ": No such revision");
+				System.err.println(context.pageName + (timestamp != null ? ": " + MediaWiki.dateToISO8601(timestamp) : "") + ": No such revision");
 			}
 		}
 
