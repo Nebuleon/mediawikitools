@@ -509,6 +509,18 @@ public class WikiShell {
 					pageListModifiers.put(s, r);
 				}
 			}
+			{
+				final KeepPagesFromAPattern k = new KeepPagesFromAPattern();
+				for (final String s : Arrays.asList("keepmatch", "keepmatching")) {
+					pageListModifiers.put(s, k);
+				}
+			}
+			{
+				final RemovePagesFromAPattern r = new RemovePagesFromAPattern();
+				for (final String s : Arrays.asList("removematch", "removematching")) {
+					pageListModifiers.put(s, r);
+				}
+			}
 			pageListModifiers.put("intersect", new IntersectPages());
 			{
 				final ReplaceInPageNames r = new ReplaceInPageNames();
@@ -6066,6 +6078,81 @@ public class WikiShell {
 			System.err.println("Normalise the names of pages used by the current 'for' subshell.");
 			System.err.println();
 			System.err.println("normali{s | z}e");
+		}
+	}
+
+	public static abstract class ExistingPagesFromAPattern implements PageListModifier {
+		public void modify(final List<String> pages, final PageListModifierContext context) throws IOException, NullPointerException, CancellationException {
+			String regex = context.arguments;
+
+			if (regex == null || regex.length() == 0)
+				regex = inputMandatory("filter by regex: ");
+
+			boolean caseSensitive = inputBoolean("case sensitive [y/N]: ", false);
+
+			Pattern pattern;
+			try {
+				pattern = Pattern.compile(regex, caseSensitive ? 0 : Pattern.CASE_INSENSITIVE);
+			} catch (PatternSyntaxException pse) {
+				System.err.println(pse.getMessage());
+				throw new CancellationException();
+			}
+
+			work("Filtering the page list...");
+			try {
+				Iterator<String> i = pages.iterator();
+				while (i.hasNext())
+					filter(i, pattern.matcher(i.next()).find());
+			} finally {
+				workEnd();
+			}
+		}
+
+		/**
+		 * Filters the page list, provided as an iterator, according to whether
+		 * the previous element matched.
+		 * 
+		 * @param pages
+		 *            The iterator to be used.
+		 * @param matched
+		 *            <code>true</code> if the current page matched the pattern
+		 *            of pages to keep or remove, and should be kept or removed
+		 *            respectively; <code>false</code> if the current page
+		 *            matched the pattern of pages to keep or remove, and should
+		 *            be removed or kept respectively.
+		 */
+		public abstract void filter(Iterator<String> pages, boolean matched);
+	}
+
+	public static class KeepPagesFromAPattern extends ExistingPagesFromAPattern {
+		@Override
+		public void filter(Iterator<String> pages, boolean matched) {
+			if (!matched)
+				pages.remove();
+		}
+
+		public void help() throws IOException {
+			System.err.println("Keeps pages matching a regular expression in the list used by the current 'for' subshell.");
+			System.err.println();
+			System.err.println("keepmatch[ing] <command> [<arguments>]");
+			System.err.println();
+			System.err.println("Pages matching the regular expression will be kept. All others will be removed.");
+		}
+	}
+
+	public static class RemovePagesFromAPattern extends ExistingPagesFromAPattern {
+		@Override
+		public void filter(Iterator<String> pages, boolean matched) {
+			if (matched)
+				pages.remove();
+		}
+
+		public void help() throws IOException {
+			System.err.println("Removes pages matching a regular expression in the list used by the current 'for' subshell.");
+			System.err.println();
+			System.err.println("removematch[ing] <command> [<arguments>]");
+			System.err.println();
+			System.err.println("Pages matching the regular expression will be removed. All others will be kept.");
 		}
 	}
 
