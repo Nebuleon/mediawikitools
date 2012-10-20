@@ -3747,8 +3747,8 @@ public class WikiShell {
 					final int elementCount = Integer.parseInt(input("get this many recent changes at once (10): ", "10"));
 					final String showUser = input("show only this user (<show all>): ", null);
 					final String hideUser = input("hide this user (<hide none>): ", null);
-					final boolean showRegularEdits = inputBoolean("show regular edits [Y/n]: ", true);
-					final boolean showNewPages = inputBoolean("show new pages [Y/n]: ", true);
+					final boolean showRegularEdits = inputBoolean("show edits to existing pages [Y/n]: ", true);
+					final boolean showNewPages = inputBoolean("show edits creating pages [Y/n]: ", true);
 					final boolean showLogEntries = inputBoolean("show log entries [Y/n]: ", true);
 					final Boolean showMinorEdits = inputBoolean("restrict to minor [y] or non-minor [n] edits (<don't care>): ", null);
 					final Boolean showBotActions = inputBoolean("restrict to bots [y] or non-bots [n] (<don't care>): ", null);
@@ -3839,8 +3839,8 @@ public class WikiShell {
 					final int elementCount = Integer.parseInt(input("get this many recent changes at once (10): ", "10"));
 					final String showUser = input("show only this user (<show all>): ", null);
 					final String hideUser = input("hide this user (<hide none>): ", null);
-					final boolean showRegularEdits = inputBoolean("show regular edits [Y/n]: ", true);
-					final boolean showNewPages = inputBoolean("show new pages [Y/n]: ", true);
+					final boolean showRegularEdits = inputBoolean("show edits to existing pages [Y/n]: ", true);
+					final boolean showNewPages = inputBoolean("show edits creating pages [Y/n]: ", true);
 					final boolean showLogEntries = inputBoolean("show log entries [Y/n]: ", true);
 					final Boolean showMinorEdits = inputBoolean("restrict to minor [y] or non-minor [n] edits (<don't care>): ", null);
 					final Boolean showBotActions = inputBoolean("restrict to bots [y] or non-bots [n] (<don't care>): ", null);
