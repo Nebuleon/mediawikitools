@@ -41,6 +41,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
+import neb.util.regex.PatternMatchGatherer;
+import neb.util.regex.PatternMatchGatherer.InfiniteMatchException;
+
 import org.mediawiki.MediaWiki.MediaWikiException;
 
 /**
@@ -484,6 +487,12 @@ public class WikiShell {
 			builtinCommands.put("repeat", new UntilCancelledRepeat());
 			builtinCommands.put("for", new ForPages());
 			builtinCommands.put("pages", new Pages());
+			{
+				final RegularExpression r = new RegularExpression();
+				for (final String s : Arrays.asList("regex", "regexpages", "regexmatch", "regexmatches")) {
+					builtinCommands.put(s, r);
+				}
+			}
 			builtinCommands.put("count", new CountPages());
 			builtinCommands.put("help", new Help());
 			builtinCommands.put("commands", new CommandList());
@@ -511,17 +520,22 @@ public class WikiShell {
 			}
 			{
 				final KeepPagesFromAPattern k = new KeepPagesFromAPattern();
-				for (final String s : Arrays.asList("keepmatch", "keepmatching")) {
+				for (final String s : Arrays.asList("keepmatch", "keepmatching", "keepmatches", "intersectmatch", "intersectmatching", "intersectmatches")) {
 					pageListModifiers.put(s, k);
 				}
 			}
 			{
 				final RemovePagesFromAPattern r = new RemovePagesFromAPattern();
-				for (final String s : Arrays.asList("removematch", "removematching")) {
+				for (final String s : Arrays.asList("removematch", "removematching", "removematches")) {
 					pageListModifiers.put(s, r);
 				}
 			}
-			pageListModifiers.put("intersect", new IntersectPages());
+			{
+				final IntersectPages i = new IntersectPages();
+				for (final String s : Arrays.asList("intersect", "keep")) {
+					pageListModifiers.put(s, i);
+				}
+			}
 			{
 				final ReplaceInPageNames r = new ReplaceInPageNames();
 				for (final String s : Arrays.asList("replace", "replacetext")) {
@@ -615,6 +629,13 @@ public class WikiShell {
 								}
 							}
 						} catch (final CancellationException ce) {
+							continue prompt;
+						} catch (final NullPointerException npe) {
+							throw npe;
+						} catch (final IOException ioe) {
+							throw ioe;
+						} catch (final Throwable t) {
+							t.printStackTrace();
 							continue prompt;
 						}
 					} else {
@@ -1723,36 +1744,43 @@ public class WikiShell {
 			context.essentialInput = inputMandatory("username: ");
 		}
 
-		@Override
-		public void getAuxiliaryInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
-			if (context.auxiliaryInput != null) {
-				context.auxiliaryInput = null;
-				System.err.println("Security note: Some input was available to the 'login' command for use as a password. It has been cleared, and you will be asked for your password again.");
-			}
-			Object c = null;
-			try {
-				c = System.console();
-			} catch (final NoSuchMethodError nsme) {
-				// no console method in System
-			}
-
-			if (c == null) {
-				System.err.println("Security note: The following prompt will SHOW the password you are entering. Do not enter your password if someone else is watching your monitor.");
-				System.err.print("password: ");
-				context.auxiliaryInput = keyboard.readLine().toCharArray();
-			} else {
-				final Console console = (Console) c;
-				System.err.print("password: ");
-				context.auxiliaryInput = console.readPassword();
-			}
-		}
-
 		public void perform(final CommandContext context) throws IOException, MediaWiki.MediaWikiException {
-			work("Logging in...");
-			try {
-				context.wiki.logIn((String) context.essentialInput, (char[]) context.auxiliaryInput);
-			} finally {
-				workEnd();
+			char[] password;
+
+			while (true) /*- login failed retry loop */{
+				Object c = null;
+				try {
+					c = System.console();
+				} catch (final NoSuchMethodError nsme) {
+					// no console method in System
+				}
+
+				if (c == null) {
+					System.err.println("Security note: The following prompt will SHOW the password you are entering. Do not enter your password if someone else is watching your monitor.");
+					System.err.print("password: ");
+					password = keyboard.readLine().toCharArray();
+				} else {
+					final Console console = (Console) c;
+					System.err.print("password: ");
+					password = console.readPassword();
+				}
+
+				try {
+					work("Logging in...");
+					context.wiki.logIn((String) context.essentialInput, password);
+					workEnd();
+					break; // on success
+				} catch (MediaWiki.LoginFailureException lfe) {
+					workEnd();
+					if (!inputBoolean("Retry with a different password? [y/N] ", false))
+						return;
+				} catch (MediaWiki.MediaWikiException mwe) {
+					workEnd();
+					throw mwe;
+				} catch (IOException ioe) {
+					workEnd();
+					throw ioe;
+				}
 			}
 		}
 
@@ -5294,6 +5322,11 @@ public class WikiShell {
 								}
 							} catch (final InterruptedException e) {
 								continue command;
+							} catch (final NullPointerException npe) {
+								throw npe;
+							} catch (final Throwable t) {
+								t.printStackTrace();
+								continue command;
 							}
 						}
 					} catch (final CancellationException ce) {
@@ -5362,6 +5395,11 @@ public class WikiShell {
 									continue command;
 								}
 							} catch (final InterruptedException ie) {
+								continue command;
+							} catch (final NullPointerException npe) {
+								throw npe;
+							} catch (final Throwable t) {
+								t.printStackTrace();
 								continue command;
 							}
 						}
@@ -5495,6 +5533,9 @@ public class WikiShell {
 							return;
 					} catch (final InterruptedException ie) {
 						return;
+					} catch (final Throwable t) {
+						t.printStackTrace();
+						return;
 					}
 				}
 			} catch (final CancellationException ce) {
@@ -5619,6 +5660,11 @@ public class WikiShell {
 										}
 									} catch (final InterruptedException ie) {
 										continue prompt;
+									} catch (final NullPointerException npe) {
+										throw npe;
+									} catch (final Throwable t) {
+										t.printStackTrace();
+										continue prompt;
 									}
 								}
 
@@ -5695,6 +5741,11 @@ public class WikiShell {
 											}
 										} catch (final InterruptedException ie) {
 											continue nextPage;
+										} catch (final NullPointerException npe) {
+											throw npe;
+										} catch (final Throwable t) {
+											t.printStackTrace();
+											continue nextPage;
 										}
 									}
 								}
@@ -5770,6 +5821,86 @@ public class WikiShell {
 			System.err.println("pages [<pipe-separated page names>]");
 			System.err.println();
 			System.err.println("The page names are mandatory and will be requested (as multi-line input) if not provided.");
+		}
+	}
+
+	public static class RegularExpression extends AbstractCommand implements IterableCommand {
+		private static final int MAX_MATCHES = 65536;
+
+		@Override
+		public void parseArguments(final CommandContext context) {
+			final String arguments = context.arguments.trim();
+
+			if (arguments.length() > 0) {
+				try {
+					final PatternMatchGatherer matchGatherer = new PatternMatchGatherer(arguments);
+
+					context.essentialInput = matchGatherer;
+
+					context.arguments = "";
+				} catch (PatternSyntaxException e) {
+					System.err.println(e.getMessage());
+				} catch (UnsupportedOperationException e) {
+					System.err.println(e.getClass().getName() + ": " + e.getMessage());
+				}
+			}
+		}
+
+		@Override
+		public void getEssentialInput(final CommandContext context) throws IOException, NullPointerException, CancellationException {
+			if (context.essentialInput != null)
+				return;
+			final String regex = inputMandatory("regex: ");
+
+			try {
+				final PatternMatchGatherer matchGatherer = new PatternMatchGatherer(regex);
+
+				context.essentialInput = matchGatherer;
+			} catch (PatternSyntaxException e) {
+				System.err.println(e.getMessage());
+				throw new CancellationException();
+			} catch (UnsupportedOperationException e) {
+				System.err.println(e.getClass().getName() + ": " + e.getMessage());
+				throw new CancellationException();
+			}
+		}
+
+		public void perform(final CommandContext context) throws IOException, MediaWikiException, ParseException {
+			PatternMatchGatherer matchGatherer = (PatternMatchGatherer) context.essentialInput;
+
+			try {
+				int matchCount = matchGatherer.getMatchCount();
+
+				if (matchCount > MAX_MATCHES && !inputBoolean(String.format("There are approximately %,d matches. Do you want to display them? "), false))
+					return;
+
+				for (String s : matchGatherer.getMatches()) {
+					context.output.println(s);
+					if (context.output.checkError())
+						return;
+				}
+			} catch (InfiniteMatchException e) {
+				System.err.println(e.getClass().getName() + ": " + e.getMessage());
+			}
+		}
+
+		public Iterator<String> iterator(final CommandContext context) throws IOException, MediaWikiException, ParseException {
+			PatternMatchGatherer matchGatherer = (PatternMatchGatherer) context.essentialInput;
+
+			try {
+				return matchGatherer.getMatches().iterator();
+			} catch (InfiniteMatchException e) {
+				System.err.println(e.getClass().getName() + ": " + e.getMessage());
+				return Collections.emptyIterator();
+			}
+		}
+
+		public void help() throws IOException {
+			System.err.println("Intended for use with 'for'. Outputs the list of pages matched by a regular expression.");
+			System.err.println();
+			System.err.println("regex[{pages | match[es]}] [<regular expression>]");
+			System.err.println();
+			System.err.println("The regular expression is mandatory and will be requested if not provided. Regular expressions are outside of the scope of this documentation.");
 		}
 	}
 
@@ -5980,6 +6111,9 @@ public class WikiShell {
 							return;
 					} catch (final InterruptedException ie) {
 						return;
+					} catch (final Throwable t) {
+						t.printStackTrace();
+						return;
 					}
 				}
 			} catch (final CancellationException ce) {
@@ -6042,7 +6176,7 @@ public class WikiShell {
 		public void help() throws IOException {
 			System.err.println("Intersects the list that is used by the current 'for' subshell with another.");
 			System.err.println();
-			System.err.println("intersect <command> [<arguments>]");
+			System.err.println("{intersect | keep} <command> [<arguments>]");
 			System.err.println();
 			System.err.println("Only pages present in both the list returned by the command and the list used by the current 'for' subshell will be kept.");
 		}
@@ -6069,6 +6203,9 @@ public class WikiShell {
 					System.err.println(e.getClass().getName() + ": " + e.getLocalizedMessage());
 					if (!inputBoolean("Retry? [Y/n] ", true))
 						return;
+				} catch (final Throwable t) {
+					t.printStackTrace();
+					return;
 				}
 			}
 		}
@@ -6133,7 +6270,7 @@ public class WikiShell {
 		public void help() throws IOException {
 			System.err.println("Keeps pages matching a regular expression in the list used by the current 'for' subshell.");
 			System.err.println();
-			System.err.println("keepmatch[ing] <command> [<arguments>]");
+			System.err.println("{intersect | keep}match[{ing | es}] <command> [<arguments>]");
 			System.err.println();
 			System.err.println("Pages matching the regular expression will be kept. All others will be removed.");
 		}
@@ -6149,7 +6286,7 @@ public class WikiShell {
 		public void help() throws IOException {
 			System.err.println("Removes pages matching a regular expression in the list used by the current 'for' subshell.");
 			System.err.println();
-			System.err.println("removematch[ing] <command> [<arguments>]");
+			System.err.println("removematch[{ing | es}] <command> [<arguments>]");
 			System.err.println();
 			System.err.println("Pages matching the regular expression will be removed. All others will be kept.");
 		}
@@ -6215,6 +6352,9 @@ public class WikiShell {
 							return;
 					} catch (final InterruptedException ie) {
 						return;
+					} catch (final Throwable t) {
+						t.printStackTrace();
+						return;
 					}
 				}
 			} catch (final CancellationException ce) {
@@ -6251,7 +6391,6 @@ public class WikiShell {
 					context.wiki = wiki;
 
 					login.getEssentialInput(context);
-					login.getAuxiliaryInput(context);
 
 					while (true) /*- command retry loop */{
 						try {
@@ -6268,6 +6407,9 @@ public class WikiShell {
 							if (!inputBoolean("Retry? [Y/n] ", true)) {
 								break;
 							}
+						} catch (final Throwable t) {
+							t.printStackTrace();
+							break;
 						}
 					}
 				} else if (inputBoolean("Would you like to stay anonymous for this session? [Y/n] ", true)) {
@@ -6331,6 +6473,9 @@ public class WikiShell {
 					if (!inputBoolean("Retry? [Y/n] ", true))
 						return false;
 				} catch (final InterruptedException ie) {
+					return false;
+				} catch (final Throwable t) {
+					t.printStackTrace();
 					return false;
 				}
 			}
