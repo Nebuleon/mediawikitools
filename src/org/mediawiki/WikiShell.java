@@ -5871,7 +5871,7 @@ public class WikiShell {
 			try {
 				int matchCount = matchGatherer.getMatchCount();
 
-				if (matchCount > MAX_MATCHES && !inputBoolean(String.format("There are approximately %,d matches. Do you want to display them? "), false))
+				if (matchCount > MAX_MATCHES && !inputBoolean(String.format("There are approximately %,d matches. Do you want to display them? ", matchCount), false))
 					return;
 
 				for (String s : matchGatherer.getMatches()) {
