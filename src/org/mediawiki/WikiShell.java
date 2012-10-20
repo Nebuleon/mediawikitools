@@ -3963,8 +3963,7 @@ public class WikiShell {
 				public void run() {
 					try {
 						input("", "");
-						recentChangesStreamer.interrupt();
-					} catch (Throwable e) {
+					} catch (Throwable e) {} finally {
 						recentChangesStreamer.interrupt();
 					}
 				}
