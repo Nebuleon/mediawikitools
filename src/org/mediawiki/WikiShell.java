@@ -5019,16 +5019,19 @@ public class WikiShell {
 
 				if (isProtect) {
 					final String level = input(String.format("require membership in what group to %s [Autoconfirmed/sysop/...]: ", action), "autoconfirmed");
-					final String expiryString = input("until when [y-m-dTh:m:sZ] (<indefinite>): ", null);
+					String expiryString = input("until when [y-m-dTh:m:sZ/in n {h | d | w | m | y}] (<indefinite>): ", null);
 
 					Date expiry;
 					try {
-						expiry = expiryString != null ? MediaWiki.timestampToDate(expiryString) : null;
+						expiry = handleDateSpecification(expiryString);
 					} catch (final ParseException e) {
 						System.err.println("Invalid input");
 						throw new CancellationException();
+					} catch (final NumberFormatException e) {
+						System.err.println("Invalid input");
+						throw new CancellationException();
 					}
-					protections.put(action, context.wiki.new Protection(level, expiry, false, null));
+					protections.put(action, new MediaWiki.Protection(level, expiry, false, null));
 				} else {
 					protections.put(action, null);
 				}
@@ -5059,6 +5062,16 @@ public class WikiShell {
 			if ((context.confirmation instanceof Boolean) && ((Boolean) context.confirmation)) {
 				final Object[] auxiliaryInput = (Object[]) context.auxiliaryInput;
 				final Map<String, MediaWiki.Protection> protections = (Map<String, MediaWiki.Protection>) context.essentialInput;
+				for (Map.Entry<String, MediaWiki.Protection> protection : protections.entrySet()) {
+					if (protection.getValue() != null) {
+						if (protection.getValue().getExpiry() != null) {
+							Date now = new Date();
+							if (protection.getValue().getExpiry().getTime() < 0) {
+								protection.setValue(new MediaWiki.Protection(protection.getValue().getLevel(), new Date(now.getTime() - protection.getValue().getExpiry().getTime()), protection.getValue().isCascading(), null));
+							}
+						}
+					}
+				}
 				final String protectionReason = (String) auxiliaryInput[0];
 				final boolean cascade = (Boolean) auxiliaryInput[1];
 				final MediaWiki.EditToken token = (MediaWiki.EditToken) context.token;
@@ -6370,6 +6383,34 @@ public class WikiShell {
 			System.err.println();
 			System.err.println("For example, you may want to count all of the redirects on the current wiki using 'count allpages' with a redirect filter, or the number of transclusions of Template:Stub using 'count transclusions Template:Stub'.");
 		}
+	}
+
+	protected static Date handleDateSpecification(String specification) throws NumberFormatException, ParseException {
+		if (specification == null)
+			return null;
+		else if (specification.toLowerCase().startsWith("in ")) {
+			specification = specification.substring(3).trim().replace(" +", "").toLowerCase();
+			long expiryUnit = 1;
+			if (specification.endsWith("h")) {
+				expiryUnit = 60 * 60 * 1000;
+				specification = specification.substring(0, specification.length() - 1);
+			} else if (specification.endsWith("d")) {
+				expiryUnit = 24 * 60 * 60 * 1000;
+				specification = specification.substring(0, specification.length() - 1);
+			} else if (specification.endsWith("w")) {
+				expiryUnit = 7 * 24 * 60 * 60 * 1000;
+				specification = specification.substring(0, specification.length() - 1);
+			} else if (specification.endsWith("m")) {
+				expiryUnit = (long) (30.436875 * 24 * 60 * 60 * 1000);
+				specification = specification.substring(0, specification.length() - 1);
+			} else if (specification.endsWith("y")) {
+				expiryUnit = (long) (365.2425 * 24 * 60 * 60 * 1000);
+				specification = specification.substring(0, specification.length() - 1);
+			}
+			long expiryCount = Long.parseLong(specification);
+			return new Date(-expiryCount * expiryUnit);
+		} else
+			return MediaWiki.timestampToDate(specification);
 	}
 
 	protected static void checkLogin(final MediaWiki wiki) throws IOException, NullPointerException, CancellationException {

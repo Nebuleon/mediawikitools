@@ -4688,7 +4688,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 					if (paramProtections.length() > 0) {
 						paramProtections.append('|');
 					}
-					paramProtections.append(protection.getKey() + "=all");
+					paramProtections.append(protection.getKey() + "=");
 					if (paramExpiry.length() > 0) {
 						paramExpiry.append('|');
 					}
@@ -6032,7 +6032,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 	}
 
-	public class Protection implements Serializable {
+	public static class Protection implements Serializable {
 		private static final long serialVersionUID = 1L;
 
 		private final String level;
