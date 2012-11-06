@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.TreeMap;
@@ -146,6 +147,7 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 		preferenceLock = new ReentrantReadWriteLock();
 		networkLock = new ReentrantLock();
+		random = new Random();
 	}
 
 	/**
@@ -8554,14 +8556,12 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		if (scriptPath.length() != 0) {
 			result.append('/');
 		}
-		result.append("api.php");
-		boolean first = true;
+		result.append("api.php?requestid=" + createRequestID());
 		if (params != null) {
 			for (final Map.Entry<String, String> param : params.entrySet()) {
 				if (param.getValue() != null) {
 					try {
-						result.append(first ? '?' : '&').append(URLEncoder.encode(param.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(param.getValue(), "UTF-8"));
-						first = false;
+						result.append('&').append(URLEncoder.encode(param.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(param.getValue(), "UTF-8"));
 					} catch (final UnsupportedEncodingException shouldNeverHappen) {
 						throw new InternalError("UTF-8 is not supported by this Java VM");
 					}
@@ -8570,10 +8570,18 @@ public class MediaWiki implements Serializable, ObjectInputValidation {
 		}
 		final Integer maxLag = getMaxLag();
 		if (maxLag != null) {
-			result.append(first ? '?' : '&').append("maxlag=").append(maxLag);
-			first = false;
+			result.append("&maxlag=").append(maxLag);
 		}
 		return result.toString();
+	}
+
+	protected transient Random random;
+
+	protected String createRequestID() {
+		char[] cc = new char[8];
+		for (int i = 0; i < cc.length; i++)
+			cc[i] = (char) ('A' + random.nextInt(26));
+		return new String(cc);
 	}
 
 	protected String createApiPostData(final Map<String, String> params) {

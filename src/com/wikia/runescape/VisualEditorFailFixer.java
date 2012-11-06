@@ -131,10 +131,10 @@ public class VisualEditorFailFixer {
 						log.log(Level.SEVERE, "Network error occurred while getting the latest revision's number for the entered page; retrying shortly", ie.getCause());
 						shortDelay();
 					} catch (IOException e) {
-						log.log(Level.SEVERE, "Network error occurred while getting the latest revision's number for the entered page; retrying shortly", e.getCause());
+						log.log(Level.SEVERE, "Network error occurred while getting the latest revision's number for the entered page; retrying shortly", e);
 						shortDelay();
 					} catch (MediaWikiException e) {
-						log.log(Level.SEVERE, "Network error occurred while getting the latest revision's number for the entered page; retrying shortly", e.getCause());
+						log.log(Level.SEVERE, "Network error occurred while getting the latest revision's number for the entered page; retrying shortly", e);
 						shortDelay();
 					}
 				}
@@ -364,9 +364,8 @@ public class VisualEditorFailFixer {
 			Date earliest = new Date();
 			long lastRcidSeen = -1L;
 			while (true) /*- re-get RecentChanges loop */{
-				// TODO Remove Project (for Project:Sandbox) added as a test
 				Iterator<MediaWiki.RecentChange> rci = wiki.recentChanges(earliest, null /*- no latest */, true /*- always chronological */, 10 /*- changes to stream at once */, null /*- show user: all */, settings.getProperty("LoginName") /*- hide user: self */, true /*- show edits modifying pages */, true /*- show edits creating pages */, false /*- don't show log entries */, null /*- minor: don't care */, false /*- bot: only non-bots */, null /*- anon: don't care */,
-						false /*- redirects: only non-redirects */, null /*- patrolled: don't filter */, false /*- getPatrolInformation */, MediaWiki.StandardNamespace.MAIN, 120L /*- custom Beta namespace */, MediaWiki.StandardNamespace.PROJECT);
+						false /*- redirects: only non-redirects */, null /*- patrolled: don't filter */, false /*- getPatrolInformation */, MediaWiki.StandardNamespace.MAIN, 120L /*- custom Beta namespace */);
 
 				MediaWiki.RecentChange rc;
 
@@ -552,6 +551,13 @@ public class VisualEditorFailFixer {
 		 */
 		private final long expectedRevisionID;
 
+		/**
+		 * <tt>Edit</tt> instances synchronise on this object to preclude other
+		 * <tt>Edit</tt> instances from logging in between the anon check and
+		 * their login attempts.
+		 */
+		private static final Object loginSync = new Object();
+
 		public Edit(final MediaWiki wiki, final Settings settings, final String fullPageName, final String basePageName, final MediaWiki.Namespace namespace, final long expectedRevisionID) {
 			this.wiki = wiki;
 			this.settings = settings;
@@ -569,61 +575,61 @@ public class VisualEditorFailFixer {
 
 			// For lesser network/wiki server utilisation, please 'return' right
 			// away if no checks would succeed for the page that was queued.
-			if (!(namespace.getID() == MediaWiki.StandardNamespace.MAIN || namespace.getID() == 120 /*- custom Beta namespace */|| (namespace.getID() == MediaWiki.StandardNamespace.PROJECT && basePageName.equals("Sandbox")))) {
+			if (!(namespace.getID() == MediaWiki.StandardNamespace.MAIN || namespace.getID() == 120 /*- custom Beta namespace */)) {
 				log.log(Level.INFO, "{0} is not subject to Visual Editor checks", fullPageName);
 				return;
 			}
 
-			/*-
 			// First, check whether we are logged in.
 			boolean isAnon = true;
 
-			while (true) {
-				// logged-in check retry loop
-				try {
-					MediaWiki.CurrentUser currentUser = wiki.getCurrentUser();
-					isAnon = currentUser.isAnonymous();
-					break;
-				} catch (IOException e) {
-					log.log(Level.SEVERE, "Network error occurred during a user login check; retrying shortly", e);
-					shortDelay();
-				} catch (MediaWiki.MediaWikiException e) {
-					log.log(Level.SEVERE, "Network error occurred during a user login check; retrying shortly", e);
-					shortDelay();
-				}
-			}
-
-			// If we are not,
-			if (isAnon) {
-				// log in.
-				log.log(Level.INFO, "Logging in");
+			synchronized (loginSync) {
 				while (true) {
-					// login retry loop
+					// logged-in check retry loop
 					try {
-						wiki.logIn(settings.getProperty("LoginName"), settings.getProperty("LoginPassword").toCharArray());
-						log.log(Level.INFO, "Successfully logged in as {0}", settings.getProperty("LoginName"));
+						MediaWiki.CurrentUser currentUser = wiki.getCurrentUser();
+						isAnon = currentUser.isAnonymous();
 						break;
-					} catch (final MediaWiki.LoginFailureException e) {
-						log.log(Level.SEVERE, "Login failed; please check LoginName and LoginPassword in $HOME/.rtefixer.conf", e);
-						System.exit(1);
-						return;
-					} catch (final MediaWiki.LoginDelayException t) {
-						log.log(Level.INFO, "Login throttled; retrying in {0} seconds", t.getWaitTime());
-						try {
-							Thread.sleep((long) t.getWaitTime() * 1000);
-						} catch (InterruptedException e) {
-							// don't care
-						}
-					} catch (final MediaWiki.BlockException b) {
-						log.log(Level.SEVERE, "User blocked; please check its block log", b);
-						System.exit(1);
-						return;
 					} catch (IOException e) {
-						log.log(Level.SEVERE, "Network error occurred while logging in; retrying shortly", e);
+						log.log(Level.SEVERE, "Network error occurred during a user login check; retrying shortly", e);
 						shortDelay();
 					} catch (MediaWiki.MediaWikiException e) {
-						log.log(Level.SEVERE, "Network error occurred while logging in; retrying shortly", e);
+						log.log(Level.SEVERE, "Network error occurred during a user login check; retrying shortly", e);
 						shortDelay();
+					}
+				}
+
+				// If we are not,
+				if (isAnon) {
+					// log in.
+					log.log(Level.INFO, "Logging in");
+					while (true) /*- login retry loop */{
+						try {
+							wiki.logIn(settings.getProperty("LoginName"), settings.getProperty("LoginPassword").toCharArray());
+							log.log(Level.INFO, "Successfully logged in as {0}", settings.getProperty("LoginName"));
+							break;
+						} catch (final MediaWiki.LoginFailureException e) {
+							log.log(Level.SEVERE, "Login failed; please check LoginName and LoginPassword in $HOME/.rtefixer.conf", e);
+							System.exit(1);
+							return;
+						} catch (final MediaWiki.LoginDelayException t) {
+							log.log(Level.INFO, "Login throttled; retrying in {0} seconds", t.getWaitTime());
+							try {
+								Thread.sleep((long) t.getWaitTime() * 1000);
+							} catch (InterruptedException e) {
+								// don't care
+							}
+						} catch (final MediaWiki.BlockException b) {
+							log.log(Level.SEVERE, "User blocked; please check its block log", b);
+							System.exit(1);
+							return;
+						} catch (IOException e) {
+							log.log(Level.WARNING, "Network error occurred while logging in; retrying shortly", e);
+							shortDelay();
+						} catch (MediaWiki.MediaWikiException e) {
+							log.log(Level.WARNING, "Network error occurred while logging in; retrying shortly", e);
+							shortDelay();
+						}
 					}
 				}
 			}
@@ -631,20 +637,22 @@ public class VisualEditorFailFixer {
 			// Get an edit token and the page's content.
 			MediaWiki.EditToken editToken;
 
-			while (true) {
-				// edit token retry loop
+			while (true) /*- edit token retry loop */{
 				try {
 					editToken = wiki.startEdit(fullPageName);
 					break;
 				} catch (IOException e) {
-					log.log(Level.SEVERE, "Network error occurred while gathering an edit token; retrying shortly", e);
+					log.log(Level.WARNING, "Network error occurred while gathering an edit token; retrying shortly", e);
 					shortDelay();
+				} catch (MediaWiki.BlockException e) {
+					log.log(Level.SEVERE, "User blocked; please check its block log", e);
+					System.exit(1);
+					return;
 				} catch (MediaWiki.MediaWikiException e) {
-					log.log(Level.SEVERE, "Network error occurred while gathering an edit token; retrying shortly", e);
+					log.log(Level.WARNING, "Network error occurred while gathering an edit token; retrying shortly", e);
 					shortDelay();
 				}
 			}
-			 */
 
 			String oldContent = null;
 
@@ -672,13 +680,13 @@ public class VisualEditorFailFixer {
 					}
 					break;
 				} catch (MediaWiki.IterationException ie) {
-					log.log(Level.SEVERE, "Network error occurred while gathering an edit token; retrying shortly", ie.getCause());
+					log.log(Level.WARNING, "Network error occurred while getting revision content; retrying shortly", ie.getCause());
 					shortDelay();
 				} catch (IOException e) {
-					log.log(Level.SEVERE, "Network error occurred while getting revision content; retrying shortly", e.getCause());
+					log.log(Level.WARNING, "Network error occurred while getting revision content; retrying shortly", e);
 					shortDelay();
 				} catch (MediaWikiException e) {
-					log.log(Level.SEVERE, "Network error occurred while getting revision content; retrying shortly", e.getCause());
+					log.log(Level.WARNING, "Network error occurred while getting revision content; retrying shortly", e);
 					shortDelay();
 				}
 			}
@@ -693,8 +701,7 @@ public class VisualEditorFailFixer {
 			Map<String, Integer> matchCount = new TreeMap<String, Integer>();
 
 			Matcher m;
-			// TODO Remove Project (for Project:Sandbox) added as a test
-			if (namespace.getID() == MediaWiki.StandardNamespace.MAIN || namespace.getID() == 120L /*- custom Beta namespace */|| (namespace.getID() == MediaWiki.StandardNamespace.PROJECT && basePageName.equals("Sandbox"))) {
+			if (namespace.getID() == MediaWiki.StandardNamespace.MAIN || namespace.getID() == 120L /*- custom Beta namespace */) {
 				// CHECK 1. Odd <span>s. Activated in content namespaces only.
 				// Passing this check replaces the <span> tag with its contents.
 				// This check SHOULD be before the others, because it removes
@@ -808,7 +815,6 @@ public class VisualEditorFailFixer {
 						matchCount.put("duplicate category", oldCategoryCount - newCategoryCount);
 				}
 
-				// TODO CHECK 5
 				// CHECK 5. [[X|Cont]][[X|igu]][[X|ous]] links. Activated in
 				// content namespaces only.
 				// Passing this check coalesces the links into one.
@@ -845,8 +851,45 @@ public class VisualEditorFailFixer {
 			}
 
 			if (!matchCount.isEmpty()) {
-				log.log(Level.INFO, "{0} r{1} would be edited to fix {2}", new Object[] { fullPageName, expectedRevisionID, matchCount });
-				// TODO EDIT HERE, GETTING THE EDIT TOKEN ABOVE
+				StringBuilder fixed = new StringBuilder();
+				for (Map.Entry<String, Integer> entry : matchCount.entrySet()) {
+					if (fixed.length() > 0)
+						fixed.append("; ");
+					fixed.append(entry.getKey()).append(": ").append(entry.getValue());
+				}
+
+				while (true) /*- edit retry loop */{
+					try {
+						wiki.replacePage(editToken, newContent, "Visual Editor glitches fixed: " + fixed, true /*- bot */, true /*- minor */);
+						log.log(Level.INFO, "{0} r{1} has been edited to fix {2}", new Object[] { fullPageName, expectedRevisionID, fixed });
+						break;
+					} catch (IOException e) {
+						log.log(Level.WARNING, "Network error occurred while editing a page; retrying shortly", e);
+						shortDelay();
+					} catch (MediaWiki.BlockException e) {
+						log.log(Level.SEVERE, "User blocked; please check its block log", e);
+						System.exit(1);
+						return;
+					} catch (MediaWiki.ActionDelayException e) {
+						log.log(Level.WARNING, "Edit delayed by maintenance; retrying shortly", e);
+						shortDelay();
+					} catch (MediaWiki.ActionFailureException e) {
+						log.log(Level.SEVERE, "Edit failed permanently", e);
+						return;
+					} catch (MediaWiki.ConflictException e) {
+						log.log(Level.INFO, "Edit conflict received on {0}; waiting for another edit to be queued", fullPageName);
+						return;
+					} catch (MediaWiki.ContentException e) {
+						log.log(Level.SEVERE, "Content cannot be saved to the page", e);
+						return;
+					} catch (MediaWiki.MissingPageException e) {
+						log.log(Level.WARNING, "Page {0} cannot be replaced as it is now missing", fullPageName);
+						return;
+					} catch (MediaWiki.MediaWikiException e) {
+						log.log(Level.WARNING, "Network error occurred while editing a page; retrying shortly", e);
+						shortDelay();
+					}
+				}
 			} else {
 				log.log(Level.INFO, "{0} r{1} has no Visual Editor failures", new Object[] { fullPageName, expectedRevisionID });
 			}
@@ -930,6 +973,7 @@ public class VisualEditorFailFixer {
 		tagWhiteList.add("ins");
 		tagWhiteList.add("kbd");
 		// math is not whitelisted! {C} in math is TeX, and needs to be kept
+		// nowiki is not whitelisted for obvious reasons: nothing's interpreted
 		tagWhiteList.add("p");
 		// pre is not whitelisted! it must be preserved
 		// source (custom) is not whitelisted! it must be preserved
