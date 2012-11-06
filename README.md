@@ -42,6 +42,14 @@ Documentation for this bot can be found [here](http://runescape.wikia.com/wiki/U
 
 [runescape]: http://www.runescape.com/ "RuneScape, an MMO by Jagex Ltd."
 
+## VisualEditorFailFixer.java
+
+Used on <http://runescape.wikia.com/>, this bot continuously runs and monitors recent changes to clean up glitches from Wikia's Visual Editor after a cooldown period allowing for counter-vandalism. You can run this bot as follows:
+
+    user@host ~/mediawikitools $ java -classpath bin com.wikia.runescape.VisualEditorFailFixer
+
+Documentation for this bot can be found [here](http://runescape.wikia.com/wiki/User:A_proofbot/Source).
+
 ## WikiShell.java
 
 This wiki command-line tool allows you to read pages, get information about many types of objects (users, pages, categories and so on) and read page histories, as well as edit, create, protect, move and delete pages, assign user rights, and more. You can run this as follows:
