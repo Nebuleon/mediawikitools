@@ -450,7 +450,7 @@ public class ClanExpGainScraper {
 
 				s = inLines.readLine();
 				while (s != null) {
-					if (s.equals("<div class=\"membersListRow\">")) {
+					if (s.endsWith("<div class=\"membersListRow\">")) {
 						inLines.readLine(); // dummy read
 						inLines.readLine(); // dummy read
 						String name = nameCleanup.matcher(stripTags(inLines.readLine())).replaceAll("&nbsp;");
