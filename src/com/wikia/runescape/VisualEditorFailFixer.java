@@ -256,6 +256,9 @@ public class VisualEditorFailFixer {
 				throw new NullPointerException("timestamp");
 			if (delayMillis < 0)
 				throw new IllegalArgumentException("delayMillis " + delayMillis + " < 0");
+			if (delayMillis > RECENT_REVERSION_MILLIS)
+				// doesn't even count as it took too long
+				return;
 
 			recentReversionTimestamps.add(timestamp);
 			try {
@@ -534,6 +537,17 @@ public class VisualEditorFailFixer {
 		private static final Pattern linkTextMatcher = Pattern.compile("\\[\\[[^]|:]+\\|([^]|]+)\\]\\]");
 
 		/**
+		 * Matches a regular wikilink whose text ends with a space.
+		 * <p>
+		 * Match groups are as follows:
+		 * <ul>
+		 * <li><tt>\1</tt> refers to the link's target.
+		 * <li><tt>\2</tt> refers to the link's text.
+		 * </ul>
+		 */
+		private static final Pattern linkTrailingSpaceMatcher = Pattern.compile("\\[\\[([^]|:]+)\\|([^]|]+?) \\]\\]");
+
+		/**
 		 * Matches a single category specification.
 		 * <p>
 		 * Match groups are as follows:
@@ -716,9 +730,10 @@ public class VisualEditorFailFixer {
 						}
 					} while (m.find());
 					m.appendTail(sb);
-					newContent = sb.toString();
-					if (replacements > 0)
+					if (replacements > 0) {
 						matchCount.put("superfluous span tag", replacements);
+						newContent = sb.toString();
+					}
 				}
 
 				// CHECK 2. {C, {C}, C}. Activated in content namespaces only.
@@ -733,9 +748,10 @@ public class VisualEditorFailFixer {
 						}
 					} while (m.find());
 					m.appendTail(sb);
-					newContent = sb.toString();
-					if (replacements > 0)
+					if (replacements > 0) {
 						matchCount.put("C in curly brackets", replacements);
+						newContent = sb.toString();
+					}
 				}
 
 				// CHECK 3. External links pointing inside the wiki. Activated
@@ -753,7 +769,7 @@ public class VisualEditorFailFixer {
 							// [[Article%27s_name_here
 							String linkTarget, linkText;
 							try {
-								linkTarget = URLDecoder.decode(m.group(1), "UTF-8").replace('_', ' ');
+								linkTarget = URLDecoder.decode(m.group(1), "UTF-8");
 							} catch (UnsupportedEncodingException e) {
 								log.log(Level.SEVERE, "UTF-8 is not supported by this Java VM");
 								System.exit(1);
@@ -763,25 +779,19 @@ public class VisualEditorFailFixer {
 								continue;
 							}
 							// |Link&#39;s text here]]
-							linkText = htmlEntitiesToCharacters(m.group(2));
+							linkText = m.group(2);
 
-							String wikilink;
-
-							if ((linkTarget.substring(0, 1).toLowerCase() + linkTarget.substring(1)).equals(linkText.substring(0, 1).toLowerCase() + linkText.substring(1))) {
-								// [[Name|name]], [[name|Name]]
-								wikilink = "[[" + linkText + "]]";
-							} else {
-								wikilink = "[[" + linkTarget + "|" + linkText + "]]";
-							}
+							String wikilink = createWikilink(linkTarget, linkText);
 
 							m.appendReplacement(sb, Matcher.quoteReplacement(wikilink));
 							replacements++;
 						}
 					} while (m.find());
 					m.appendTail(sb);
-					newContent = sb.toString();
-					if (replacements > 0)
+					if (replacements > 0) {
 						matchCount.put("full URL to article", replacements);
+						newContent = sb.toString();
+					}
 				}
 
 				// CHECK 4. Category deduplication. Activated in the main
@@ -810,9 +820,10 @@ public class VisualEditorFailFixer {
 					cm.appendTail(dedupedCategories);
 					sb.append(dedupedCategories);
 
-					newContent = sb.toString();
-					if (oldCategoryCount - newCategoryCount > 0)
+					if (oldCategoryCount - newCategoryCount > 0) {
 						matchCount.put("duplicate category", oldCategoryCount - newCategoryCount);
+						newContent = sb.toString();
+					}
 				}
 
 				// CHECK 5. [[X|Cont]][[X|igu]][[X|ous]] links. Activated in
@@ -830,23 +841,41 @@ public class VisualEditorFailFixer {
 								linkText.append(lm.group(1));
 							}
 
-							String wikilink;
-
-							if ((linkTarget.substring(0, 1).toLowerCase() + linkTarget.substring(1)).equals(linkText.substring(0, 1).toLowerCase() + linkText.substring(1))) {
-								// [[Name|name]], [[name|Name]]
-								wikilink = "[[" + linkText + "]]";
-							} else {
-								wikilink = "[[" + linkTarget + "|" + linkText + "]]";
-							}
+							String wikilink = createWikilink(linkTarget, linkText.toString());
 
 							m.appendReplacement(sb, Matcher.quoteReplacement(wikilink));
 							replacements++;
 						}
 					} while (m.find());
 					m.appendTail(sb);
-					newContent = sb.toString();
-					if (replacements > 0)
+					if (replacements > 0) {
 						matchCount.put("contiguous links to the same page", replacements);
+						newContent = sb.toString();
+					}
+				}
+
+				// CHECK 6. [[X|X ]] links. Activated in content namespaces
+				// only.
+				// Passing this check moves the space out of the link, and
+				// possibly shrinks the link.
+				if ((m = linkTrailingSpaceMatcher.matcher(newContent)).find()) {
+					StringBuffer sb = new StringBuffer(newContent.length());
+					int replacements = 0;
+					do {
+						if (isTagListOK(getActiveTags(newContent, m.start()))) {
+							String linkTarget = m.group(1), linkText = m.group(2);
+
+							String wikilink = createWikilink(linkTarget, linkText);
+
+							m.appendReplacement(sb, Matcher.quoteReplacement(wikilink) + " ");
+							replacements++;
+						}
+					} while (m.find());
+					m.appendTail(sb);
+					if (replacements > 0) {
+						matchCount.put("link ending with a space", replacements);
+						newContent = sb.toString();
+					}
 				}
 			}
 
@@ -893,6 +922,17 @@ public class VisualEditorFailFixer {
 			} else {
 				log.log(Level.INFO, "{0} r{1} has no Visual Editor failures", new Object[] { fullPageName, expectedRevisionID });
 			}
+		}
+	}
+
+	public static String createWikilink(String linkTarget, String linkText) {
+		linkTarget = linkTarget.replace('_', ' ');
+		linkText = htmlEntitiesToCharacters(linkText);
+		if ((linkTarget.substring(0, 1).toLowerCase() + linkTarget.substring(1)).equals(linkText.substring(0, 1).toLowerCase() + linkText.substring(1))) {
+			// [[Name|name]], [[name|Name]]
+			return "[[" + linkText + "]]";
+		} else {
+			return "[[" + linkTarget + "|" + linkText + "]]";
 		}
 	}
 
