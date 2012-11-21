@@ -494,7 +494,7 @@ public class VisualEditorFailFixer {
 		 * Matches odd <tt>&lt;span&gt;</tt> tags, capturing the contents as
 		 * <tt>\1</tt>.
 		 */
-		private static final Pattern oddSpanRemover = Pattern.compile("<span style=\"(?:color:rgb\\(0,0,0\\);|line-height:20px;|color:rgb\\(0,0,0\\);line-height:20px;|color:rgb\\(0,0,0\\);font-family:monospace;)\">([^<>]*)</span>");
+		private static final Pattern oddSpanRemover = Pattern.compile("<span style=\"(?:color:rgb\\(0,0,0\\);|line-height:[0-9]+px;|color:rgb\\(0,0,0\\);line-height:[0-9]+px;|color:rgb\\(0,0,0\\);font-family:monospace;)\">([^<>]*)</span>");
 
 		/**
 		 * Matches links marked up as external links to the RuneScape Wiki,
