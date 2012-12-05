@@ -368,7 +368,7 @@ public class VisualEditorFailFixer {
 			long lastRcidSeen = -1L;
 			while (true) /*- re-get RecentChanges loop */{
 				Iterator<MediaWiki.RecentChange> rci = wiki.recentChanges(earliest, null /*- no latest */, true /*- always chronological */, 10 /*- changes to stream at once */, null /*- show user: all */, settings.getProperty("LoginName") /*- hide user: self */, true /*- show edits modifying pages */, true /*- show edits creating pages */, false /*- don't show log entries */, null /*- minor: don't care */, false /*- bot: only non-bots */, null /*- anon: don't care */,
-						false /*- redirects: only non-redirects */, null /*- patrolled: don't filter */, false /*- getPatrolInformation */, MediaWiki.StandardNamespace.MAIN, 120L /*- custom Beta namespace */);
+						false /*- redirects: only non-redirects */, null /*- patrolled: don't filter */, false /*- getPatrolInformation */, MediaWiki.StandardNamespace.MAIN, MediaWiki.StandardNamespace.USER);
 
 				MediaWiki.RecentChange rc;
 
@@ -589,7 +589,7 @@ public class VisualEditorFailFixer {
 
 			// For lesser network/wiki server utilisation, please 'return' right
 			// away if no checks would succeed for the page that was queued.
-			if (!(namespace.getID() == MediaWiki.StandardNamespace.MAIN || namespace.getID() == 120 /*- custom Beta namespace */)) {
+			if (!((namespace.getID() == MediaWiki.StandardNamespace.MAIN && !basePageName.endsWith("/Charm log")) || (namespace.getID() == MediaWiki.StandardNamespace.USER && basePageName.indexOf('/') == -1))) {
 				log.log(Level.INFO, "{0} is not subject to Visual Editor checks", fullPageName);
 				return;
 			}
@@ -715,8 +715,11 @@ public class VisualEditorFailFixer {
 			Map<String, Integer> matchCount = new TreeMap<String, Integer>();
 
 			Matcher m;
-			if (namespace.getID() == MediaWiki.StandardNamespace.MAIN || namespace.getID() == 120L /*- custom Beta namespace */) {
-				// CHECK 1. Odd <span>s. Activated in content namespaces only.
+			// The checks in this statement apply to:
+			// * Main-namespace pages whose name does not end in /Charm log;
+			// * User-namespace pages that are not subpages.
+			if ((namespace.getID() == MediaWiki.StandardNamespace.MAIN && !basePageName.endsWith("/Charm log")) || (namespace.getID() == MediaWiki.StandardNamespace.USER && basePageName.indexOf('/') == -1)) {
+				// CHECK 1. Odd <span>s. Activated in Main and User namespaces.
 				// Passing this check replaces the <span> tag with its contents.
 				// This check SHOULD be before the others, because it removes
 				// tags.
@@ -736,7 +739,7 @@ public class VisualEditorFailFixer {
 					}
 				}
 
-				// CHECK 2. {C, {C}, C}. Activated in content namespaces only.
+				// CHECK 2. {C, {C}, C}. Activated in Main and User namespaces.
 				// Passing this check removes the offending characters.
 				if ((m = CInBracesRemover.matcher(newContent)).find()) {
 					StringBuffer sb = new StringBuffer(newContent.length() - 2);
@@ -755,7 +758,7 @@ public class VisualEditorFailFixer {
 				}
 
 				// CHECK 3. External links pointing inside the wiki. Activated
-				// in content namespaces only.
+				// in Main and User namespaces.
 				// Passing this check replaces the external link with a regular
 				// wikilink, cleaning the link name as needed.
 				// Links containing unescaped ? or & in the link target are not
@@ -794,8 +797,8 @@ public class VisualEditorFailFixer {
 					}
 				}
 
-				// CHECK 4. Category deduplication. Activated in the main
-				// namespace only.
+				// CHECK 4. Category deduplication. Activated in Main and User
+				// namespaces.
 				// Passing this check removes categories that are found twice at
 				// the end of an article.
 				if ((m = categoriesAtEndMatcher.matcher(newContent)).find()) {
@@ -827,7 +830,7 @@ public class VisualEditorFailFixer {
 				}
 
 				// CHECK 5. [[X|Cont]][[X|igu]][[X|ous]] links. Activated in
-				// content namespaces only.
+				// Main and User namespaces.
 				// Passing this check coalesces the links into one.
 				if ((m = linksToSamePageMatcher.matcher(newContent)).find()) {
 					StringBuffer sb = new StringBuffer(newContent.length());
@@ -854,8 +857,8 @@ public class VisualEditorFailFixer {
 					}
 				}
 
-				// CHECK 6. [[X|X ]] links. Activated in content namespaces
-				// only.
+				// CHECK 6. [[X|X ]] links. Activated in Main and User
+				// namespaces.
 				// Passing this check moves the space out of the link, and
 				// possibly shrinks the link.
 				if ((m = linkTrailingSpaceMatcher.matcher(newContent)).find()) {
@@ -928,15 +931,18 @@ public class VisualEditorFailFixer {
 	public static String createWikilink(String linkTarget, String linkText) {
 		linkTarget = linkTarget.replace('_', ' ');
 		linkText = htmlEntitiesToCharacters(linkText);
-		if ((linkTarget.substring(0, 1).toLowerCase() + linkTarget.substring(1)).equals(linkText.substring(0, 1).toLowerCase() + linkText.substring(1))) {
-			// [[Name|name]], [[name|Name]]
+		if ((linkTarget.substring(0, 1).toLowerCase() + linkTarget.substring(1)).equals(linkText.substring(0, 1).toLowerCase() + linkText.substring(1).replace('_', ' '))) {
+			// [[Name|name]], [[name|Name]],
+			// [[Multi word name|multi word name]],
+			// [[multi_word_name|Multi word name]],
+			// [[Multi word name|Multi_word_name]] (programming identifiers)
 			return "[[" + linkText + "]]";
 		} else {
 			return "[[" + linkTarget + "|" + linkText + "]]";
 		}
 	}
 
-	private static final Pattern htmlNumericEntityMatcher = Pattern.compile("&#[0-9]+;");
+	private static final Pattern htmlNumericEntityMatcher = Pattern.compile("&#([0-9]+);");
 
 	public static String htmlEntitiesToCharacters(final String document) {
 		String newDocument = document;
@@ -944,7 +950,10 @@ public class VisualEditorFailFixer {
 		if ((m = htmlNumericEntityMatcher.matcher(newDocument)).find()) {
 			StringBuffer sb = new StringBuffer(newDocument.length());
 			do
-				m.appendReplacement(sb, "$1");
+				if (m.group(1).equals("91") || m.group(1).equals("93"))
+					/*- do not replace 91 and 93 with their characters, [ and ] */;
+				else
+					m.appendReplacement(sb, "$1");
 			while (m.find());
 			m.appendTail(sb);
 			newDocument = sb.toString();
